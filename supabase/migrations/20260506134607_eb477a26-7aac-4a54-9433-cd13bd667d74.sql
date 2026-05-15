@@ -1,0 +1,26 @@
+
+UPDATE public.stadiums SET lat=55.7905, lng=37.6786 WHERE id='bbdf2c87-72aa-42bb-a2ed-d3f8b855d200';
+UPDATE public.stadiums SET lat=55.7090, lng=37.6225 WHERE id='34e2e519-4474-4dbd-82b8-2f401f0bc14a';
+UPDATE public.stadiums SET lat=55.8265, lng=37.4380 WHERE id='6dfe88a2-3cfa-4807-93e0-dd3b5f551c3e';
+UPDATE public.stadiums SET lat=55.6510, lng=37.3870 WHERE id='7826b80a-6305-4d71-b5d8-656431c36fbd';
+UPDATE public.stadiums SET lat=55.6580, lng=37.7510 WHERE id='e26b125d-d48f-4028-9be3-62b2f4db51b5';
+UPDATE public.stadiums SET lat=55.7520, lng=37.7830 WHERE id='9c1c9eac-bbf6-4ce9-9b70-d4adc1f4c90c';
+UPDATE public.stadiums SET lat=55.8460, lng=37.3620 WHERE id='d88483d5-ef25-41d1-89b1-29af244b4195';
+UPDATE public.stadiums SET lat=55.7155, lng=37.5535 WHERE id='2de1035d-be0c-4dad-9614-b7af3cee5258';
+UPDATE public.stadiums SET lat=55.7575, lng=37.4170 WHERE id='f266b152-15bd-45d9-b705-d51b1bd6dd35';
+UPDATE public.stadiums SET lat=55.7290, lng=37.6420 WHERE id='12547b0b-8a73-451f-bb74-ee6e52fb074a';
+UPDATE public.stadiums SET lat=55.7180, lng=37.6420 WHERE id='644ca1ab-12e4-4fc7-9f02-a5db0d31f92a';
+UPDATE public.stadiums SET lat=55.7085, lng=37.6770 WHERE id='63ff17c0-0d95-4bd9-baec-1b7e0c6f6310';
+UPDATE public.stadiums SET lat=55.7000, lng=37.8330 WHERE id='04b8265d-a5a6-4865-851d-7f9b2f6eedcc';
+UPDATE public.stadiums SET lat=55.6515, lng=37.3880 WHERE id='0bb3dd7d-2d53-4cfd-9add-1266b24f03dc';
+UPDATE public.stadiums SET lat=55.6850, lng=37.6020 WHERE id='e48890d2-aa9f-4c74-ada2-7b93518cadd8';
+UPDATE public.stadiums SET lat=55.6855, lng=37.6025 WHERE id='233a2922-2356-43af-a37f-288d6bad3616';
+UPDATE public.stadiums SET lat=55.7625, lng=37.6925 WHERE id='957e0532-401a-4fd5-adbb-9943be0fc52a';
+UPDATE public.stadiums SET lat=55.6790, lng=37.6650 WHERE id='a5d85158-96db-49d9-8172-002d37797dfd';
+UPDATE public.stadiums SET lat=55.8400, lng=37.4870 WHERE id='c0428ae5-69b6-4d3a-ab5a-75ab9bdba19b';
+UPDATE public.stadiums SET lat=55.6200, lng=37.4830 WHERE id='6a8894b2-5e00-490b-a76f-5b6b81ca8345';
+UPDATE public.stadiums SET lat=55.7050, lng=37.9220 WHERE id='7cdfee3a-e1b6-481d-884b-5b4d384a2546';
+UPDATE public.stadiums SET lat=55.6680, lng=37.4180 WHERE id='60dac03a-ac3c-47ad-8899-6f48340dd919';
+UPDATE public.stadiums SET lat=55.7570, lng=37.5550 WHERE id='8b1228ac-0990-4f49-9c52-608acd4ceacd';
+UPDATE public.stadiums SET lat=55.7910, lng=37.5580 WHERE id='d5953972-75e0-4ec9-b37d-cafe751d37ec';
+UPDATE public.stadiums SET lat=55.7470, lng=37.4920 WHERE id='f5f9abb3-3c02-4752-bdea-86b8906b305c';

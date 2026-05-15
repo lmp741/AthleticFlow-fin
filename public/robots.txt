@@ -1,0 +1,73 @@
+User-agent: *
+Allow: /
+Disallow: /auth
+Disallow: /profile
+Disallow: /chats
+Disallow: /chats/
+Disallow: /my
+Disallow: /reset-phone
+Disallow: /friends/
+
+# Яндекс — основной поисковик ЦА
+User-agent: Yandex
+Allow: /
+Disallow: /auth
+Disallow: /profile
+Disallow: /chats
+Disallow: /chats/
+Disallow: /my
+Disallow: /reset-phone
+Disallow: /friends/
+Host: httpsaf-sport.lovable.app
+Clean-param: utm_source&utm_medium&utm_campaign&utm_term&utm_content&fbclid&yclid&gclid /
+
+User-agent: YandexBot
+Allow: /
+
+User-agent: YandexImages
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+# AI-краулеры — разрешаем (хотим, чтобы нас цитировали LLM в ответах)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://httpsaf-sport.lovable.app/sitemap.xml

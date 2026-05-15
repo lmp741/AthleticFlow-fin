@@ -1,0 +1,169 @@
+import { createFileRoute } from "@tanstack/react-router";
+import type {} from "@tanstack/react-start";
+import { createClient } from "@supabase/supabase-js";
+
+/**
+ * Server route: GET /api/geocode?q=<строка>
+ *
+ * Логика:
+ *   1. Нормализуем запрос (trim, lowercase, схлоп пробелов).
+ *   2. Ищем в supabase.geocode_cache. Если есть — отдаём.
+ *   3. Если нет — спрашиваем Я.Геокодер (bbox Москвы, rspn=1).
+ *   4. Кладём ответ в кэш.
+ *   5. Отдаём { lat, lng, label } или 404.
+ *
+ * ENV (только на сервере, без VITE_):
+ *   - YANDEX_GEOCODER_KEY  — ключ Я.Карт с включённым Геокодером.
+ *   - SUPABASE_URL         — URL проекта.
+ *   - SUPABASE_SERVICE_ROLE_KEY (предпочтительно) или SUPABASE_ANON_KEY.
+ *
+ * ВАЖНО: бесплатный лимит Я.Геокодера — 1000 запросов / сутки на ключ.
+ *        Кэш критичен: 90% адресов будут хитами после 1-2 недель работы.
+ */
+
+interface YandexGeocodeResponse {
+  response?: {
+    GeoObjectCollection?: {
+      featureMember?: Array<{
+        GeoObject?: {
+          Point?: { pos?: string };
+          metaDataProperty?: { GeocoderMetaData?: { text?: string } };
+        };
+      }>;
+    };
+  };
+}
+
+function normalizeQuery(q: string): string {
+  return q.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_ANON_KEY ??
+    process.env.VITE_SUPABASE_ANON_KEY ??
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+async function askYandex(q: string): Promise<{ lat: number; lng: number; label: string } | null> {
+  const apiKey = process.env.YANDEX_GEOCODER_KEY;
+  if (!apiKey) {
+    console.error("[geocode] YANDEX_GEOCODER_KEY not set");
+    return null;
+  }
+  // bbox Москвы + ближайшего Подмосковья. rspn=1 — строгое ограничение поиска.
+  const bbox = "37.30,55.50~37.95,56.00";
+  const url = new URL("https://geocode-maps.yandex.ru/v1/");
+  url.searchParams.set("apikey", apiKey);
+  url.searchParams.set("geocode", q);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("lang", "ru_RU");
+  url.searchParams.set("results", "1");
+  url.searchParams.set("bbox", bbox);
+  url.searchParams.set("rspn", "1");
+  // Тип результата — оставляем дефолт (any).
+
+  const r = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+    // Я.Геокодер обычно быстрый, но накинем разумный таймаут.
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!r.ok) {
+    console.error("[geocode] yandex http", r.status);
+    return null;
+  }
+  const json = (await r.json()) as YandexGeocodeResponse;
+  const member = json.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+  const pos = member?.Point?.pos;
+  if (!pos) return null;
+  const [lonStr, latStr] = pos.split(" ");
+  const lat = parseFloat(latStr);
+  const lng = parseFloat(lonStr);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const label = member?.metaDataProperty?.GeocoderMetaData?.text ?? q;
+  return { lat, lng, label };
+}
+
+export const Route = createFileRoute("/api/geocode")({
+  server: {
+    handlers: {
+      GET: async ({ request }) => {
+        const u = new URL(request.url);
+        const raw = u.searchParams.get("q") ?? "";
+        const q = normalizeQuery(raw);
+        if (q.length < 2 || q.length > 200) {
+          return new Response(JSON.stringify({ error: "bad query" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const supa = getSupabaseAdmin();
+
+        // 1) Cache lookup
+        if (supa) {
+          const { data } = await supa
+            .from("geocode_cache")
+            .select("lat, lng, label")
+            .eq("query_norm", q)
+            .maybeSingle();
+          if (data) {
+            return new Response(
+              JSON.stringify({ lat: data.lat, lng: data.lng, label: data.label ?? raw, cached: true }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Cache-Control": "public, max-age=86400",
+                },
+              },
+            );
+          }
+        }
+
+        // 2) Ask Yandex
+        const hit = await askYandex(q);
+        if (!hit) {
+          return new Response(JSON.stringify({ error: "not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // 3) Save to cache
+        if (supa) {
+          try {
+            await supa.from("geocode_cache").upsert(
+              {
+                query_norm: q,
+                lat: hit.lat,
+                lng: hit.lng,
+                label: hit.label,
+                provider: "yandex",
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "query_norm" },
+            );
+          } catch (err) {
+            console.error("[geocode] cache write failed", err);
+          }
+        }
+
+        return new Response(
+          JSON.stringify({ lat: hit.lat, lng: hit.lng, label: hit.label, cached: false }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "public, max-age=86400",
+            },
+          },
+        );
+      },
+    },
+  },
+});
