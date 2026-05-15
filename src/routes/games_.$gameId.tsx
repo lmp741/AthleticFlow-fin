@@ -534,6 +534,20 @@ function GamePage() {
                 <p className="mt-4 text-xs text-muted-foreground">
                   Опытные организаторы держат состав и предупреждают об отмене заранее.
                 </p>
+                {/* «Написать организатору» — для всех залогиненных, кроме самого организатора */}
+                {user && !isOrganizer && organizer.id && (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 w-full sm:w-auto"
+                  >
+                    <Link to="/friends/$friendId" params={{ friendId: organizer.id }}>
+                      <MessageCircle className="mr-1.5 h-4 w-4" />
+                      Написать организатору
+                    </Link>
+                  </Button>
+                )}
               </div>
             )}
 
