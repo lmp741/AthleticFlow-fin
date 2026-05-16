@@ -258,8 +258,14 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-border/60">
-        <div className="container mx-auto px-4 py-4 text-center text-xs text-muted-foreground sm:px-6">
-          © {new Date().getFullYear()} Athletic Flow. Все права защищены.
+        <div className="container mx-auto flex flex-col gap-2 px-4 py-4 text-xs text-muted-foreground sm:px-6 md:flex-row md:items-center md:justify-between">
+          <p>
+            © {new Date().getFullYear()} ООО «АТЛЕТИК ФЛОУ». Все права защищены.
+          </p>
+          <p className="text-[11px] leading-relaxed">
+            ИНН 5024259241 · КПП 502401001 ·
+            143442, Московская обл., Красногорский р-н, д. Отрадное, ул. Пятницкая, д. 14, кв. 443
+          </p>
         </div>
       </div>
     </footer>

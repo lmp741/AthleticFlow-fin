@@ -44,14 +44,27 @@ function PersonalDataPage() {
           <div>
             <h2 className="font-display text-xl font-bold sm:text-2xl">1. Оператор</h2>
             <p className="mt-2">
-              Оператором персональных данных является администрация Сервиса. Контактный e-mail для обращений:
-              {" "}<a className="text-primary hover:underline" href="mailto:hello@athleticflow.app">hello@athleticflow.app</a>.
+              Оператором персональных данных является{" "}
+              <b className="text-foreground">
+                Общество с ограниченной ответственностью «АТЛЕТИК ФЛОУ»
+              </b>{" "}
+              (ООО «АТЛЕТИК ФЛОУ»).
             </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {/* TODO: заменить на реальные реквизиты юрлица / ИП после регистрации */}
-              Реквизиты оператора (наименование, ИНН, ОГРН, юридический адрес) указываются после регистрации
-              юридического лица или ИП.
-            </p>
+            <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+              <li><b className="text-foreground">ИНН:</b> 5024259241</li>
+              <li><b className="text-foreground">КПП:</b> 502401001</li>
+              <li>
+                <b className="text-foreground">Юридический адрес:</b> 143442,
+                Российская Федерация, Московская область, Красногорский район,
+                деревня Отрадное, ул. Пятницкая, д. 14, кв. 443
+              </li>
+              <li>
+                <b className="text-foreground">E-mail для обращений:</b>{" "}
+                <a className="text-primary hover:underline" href="mailto:hello@athleticflow.app">
+                  hello@athleticflow.app
+                </a>
+              </li>
+            </ul>
           </div>
 
           <div>
