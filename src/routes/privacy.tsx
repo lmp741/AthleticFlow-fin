@@ -13,7 +13,7 @@ export const Route = createFileRoute("/privacy")({
       { name: "robots", content: "noindex, follow" },
     ],
     links: [
-      { rel: "canonical", href: "https://httpsaf-sport.lovable.app/privacy" },
+      { rel: "canonical", href: "https://af-sport.ru/privacy" },
     ],
   }),
   component: PrivacyPage,

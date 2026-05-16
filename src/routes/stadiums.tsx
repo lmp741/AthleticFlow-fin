@@ -55,9 +55,9 @@ export const Route = createFileRoute("/stadiums")({
       { name: "description", content: "Футбольные площадки и стадионы Москвы для аренды: фильтры по виду спорта, карте и доступности." },
       { property: "og:title", content: "Стадионы — Athletic Flow" },
       { property: "og:description", content: "Площадки Москвы для аренды по 15+ видам спорта." },
-      { property: "og:url", content: "https://httpsaf-sport.lovable.app/stadiums" },
+      { property: "og:url", content: "https://af-sport.ru/stadiums" },
     ],
-    links: [{ rel: "canonical", href: "https://httpsaf-sport.lovable.app/stadiums" }],
+    links: [{ rel: "canonical", href: "https://af-sport.ru/stadiums" }],
   }),
   component: StadiumsPage,
 });

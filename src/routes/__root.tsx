@@ -1,7 +1,24 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+  useRouterState,
+} from "@tanstack/react-router";
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/hooks/useAuth";
 import { CallProvider } from "@/components/calls/CallProvider";
+
+// Declare ym for TypeScript (Яндекс.Метрика)
+declare global {
+  interface Window {
+    ym?: (counterId: number, eventName: string, ...rest: unknown[]) => void;
+  }
+}
+
+const YM_COUNTER_ID = 109248844;
 
 import appCss from "../styles.css?url";
 
@@ -79,7 +96,7 @@ export const Route = createRootRoute({
           "@context": "https://schema.org",
           "@type": "WebSite",
           name: "Athletic Flow",
-          url: "https://httpsaf-sport.lovable.app",
+          url: "https://af-sport.ru",
           description:
             "Платформа любительского спорта в Москве: найди игру, собери команду, забронируй стадион.",
         }),
@@ -89,9 +106,25 @@ export const Route = createRootRoute({
         children: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "Organization",
-          name: "Athletic Flow",
-          url: "https://httpsaf-sport.lovable.app",
+          name: "ООО «АТЛЕТИК ФЛОУ»",
+          legalName: "Общество с ограниченной ответственностью «АТЛЕТИК ФЛОУ»",
+          url: "https://af-sport.ru",
+          taxID: "5024259241",
+          address: {
+            "@type": "PostalAddress",
+            addressLocality: "Красногорский район, д. Отрадное",
+            streetAddress: "ул. Пятницкая, д. 14, кв. 443",
+            postalCode: "143442",
+            addressRegion: "Московская область",
+            addressCountry: "RU",
+          },
         }),
+      },
+      // Яндекс.Метрика — счётчик 109248844, эталонный код из кабинета Метрики.
+      // ssr:true — важно для TanStack Start (SSR-приложение).
+      // referrer/url берутся из document/location на клиенте (script выполняется в браузере).
+      {
+        children: `(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=109248844', 'ym');ym(109248844, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});`,
       },
     ],
   }),
@@ -110,15 +143,39 @@ function RootShell({ children }: { children: React.ReactNode }) {
         {children}
         <Toaster />
         <Scripts />
+        {/* Яндекс.Метрика noscript-фоллбек (для пользователей с выключенным JS) */}
+        <noscript>
+          <div>
+            <img
+              src="https://mc.yandex.ru/watch/109248844"
+              style={{ position: "absolute", left: "-9999px" }}
+              alt=""
+            />
+          </div>
+        </noscript>
       </body>
     </html>
   );
+}
+
+function YmTracker() {
+  // Отправляем hit в Я.Метрику при каждой смене роута (SPA-навигация).
+  const location = useRouterState({ select: (s) => s.location });
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.ym !== "function") return;
+    window.ym(YM_COUNTER_ID, "hit", window.location.href, {
+      title: document.title,
+      referer: document.referrer,
+    });
+  }, [location.pathname, location.searchStr]);
+  return null;
 }
 
 function RootComponent() {
   return (
     <AuthProvider>
       <CallProvider>
+        <YmTracker />
         <Outlet />
       </CallProvider>
     </AuthProvider>

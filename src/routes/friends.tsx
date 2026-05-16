@@ -36,9 +36,9 @@ export const Route = createFileRoute("/friends")({
         property: "og:description",
         content: "Собирай постоянную команду: друзья, приглашения и быстрая запись на игры.",
       },
-      { property: "og:url", content: "https://httpsaf-sport.lovable.app/friends" },
+      { property: "og:url", content: "https://af-sport.ru/friends" },
     ],
-    links: [{ rel: "canonical", href: "https://httpsaf-sport.lovable.app/friends" }],
+    links: [{ rel: "canonical", href: "https://af-sport.ru/friends" }],
   }),
   component: () => (
     <RequireAuth>

@@ -13,7 +13,7 @@ export const Route = createFileRoute("/personal-data")({
       { name: "robots", content: "noindex, follow" },
     ],
     links: [
-      { rel: "canonical", href: "https://httpsaf-sport.lovable.app/personal-data" },
+      { rel: "canonical", href: "https://af-sport.ru/personal-data" },
     ],
   }),
   component: PersonalDataPage,

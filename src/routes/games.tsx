@@ -42,9 +42,9 @@ export const Route = createFileRoute("/games")({
       },
       { property: "og:title", content: "Игры — Athletic Flow" },
       { property: "og:description", content: "Каталог любительских игр в Москве по 15+ видам спорта." },
-      { property: "og:url", content: "https://httpsaf-sport.lovable.app/games" },
+      { property: "og:url", content: "https://af-sport.ru/games" },
     ],
-    links: [{ rel: "canonical", href: "https://httpsaf-sport.lovable.app/games" }],
+    links: [{ rel: "canonical", href: "https://af-sport.ru/games" }],
   }),
   component: GamesPage,
 });

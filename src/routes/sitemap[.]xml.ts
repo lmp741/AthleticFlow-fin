@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type {} from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 
-const BASE_URL = "https://httpsaf-sport.lovable.app";
+const BASE_URL = "https://af-sport.ru";
 
 interface SitemapEntry {
   path: string;

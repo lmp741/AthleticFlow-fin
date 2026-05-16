@@ -58,9 +58,9 @@ export const Route = createFileRoute("/")({
         property: "og:description",
         content: "Поиск игроков, бронирование площадок и оплата за 3 клика.",
       },
-      { property: "og:url", content: "https://httpsaf-sport.lovable.app/" },
+      { property: "og:url", content: "https://af-sport.ru/" },
     ],
-    links: [{ rel: "canonical", href: "https://httpsaf-sport.lovable.app/" }],
+    links: [{ rel: "canonical", href: "https://af-sport.ru/" }],
   }),
   component: HomePage,
 });

@@ -26,7 +26,7 @@ import parkImg from "@/assets/stadiums/park.jpg";
 import turfImg from "@/assets/stadiums/turf.jpg";
 import arenaImg from "@/assets/stadiums/arena.jpg";
 
-const BASE_URL = "https://httpsaf-sport.lovable.app";
+const BASE_URL = "https://af-sport.ru";
 
 function stadiumImageFor(name: string): string {
   const n = name.toLowerCase();

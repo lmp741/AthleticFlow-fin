@@ -18,7 +18,7 @@ Disallow: /chats/
 Disallow: /my
 Disallow: /reset-phone
 Disallow: /friends/
-Host: httpsaf-sport.lovable.app
+Host: af-sport.ru
 Clean-param: utm_source&utm_medium&utm_campaign&utm_term&utm_content&fbclid&yclid&gclid /
 
 User-agent: YandexBot
@@ -70,4 +70,4 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-Sitemap: https://httpsaf-sport.lovable.app/sitemap.xml
+Sitemap: https://af-sport.ru/sitemap.xml

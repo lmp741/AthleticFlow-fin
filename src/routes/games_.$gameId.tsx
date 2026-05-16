@@ -18,7 +18,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/games_/$gameId")({
   head: ({ params }) => {
-    const url = `https://httpsaf-sport.lovable.app/games/${params.gameId}`;
+    const url = `https://af-sport.ru/games/${params.gameId}`;
     const title = "Игра — присоединиться к команде — Athletic Flow";
     const description =
       "Детали любительской игры: вид спорта, стадион, время, уровень, свободные слоты и стоимость. Присоединяйся к команде в 3 клика.";
