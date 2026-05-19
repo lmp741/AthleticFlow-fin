@@ -1,4 +1,4 @@
-import { createRouter, useRouter } from "@tanstack/react-router";
+import { createRouter as createTanStackRouter, useRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
 function DefaultErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
@@ -54,8 +54,12 @@ function DefaultErrorComponent({ error, reset }: { error: Error; reset: () => vo
   );
 }
 
-export const getRouter = () => {
-  const router = createRouter({
+/**
+ * Имя экспорта `createRouter` обязательно для TanStack Start v1.131+ —
+ * default-client-entry / default-server-entry ищут именно его в src/router.tsx.
+ */
+export const createRouter = () => {
+  const router = createTanStackRouter({
     routeTree,
     context: {},
     scrollRestoration: true,
@@ -65,3 +69,6 @@ export const getRouter = () => {
 
   return router;
 };
+
+// Обратная совместимость, если кто-то импортирует getRouter (нигде не используется в проекте на момент рефактора)
+export const getRouter = createRouter;

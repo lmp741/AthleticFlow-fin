@@ -5,21 +5,23 @@ import tailwindcss from "@tailwindcss/vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
 /**
- * TanStack Start v1.131.x — стабильный API:
- *   target: 'vercel' | 'netlify' | 'cloudflare-pages' | 'node-server' | 'bun' | 'deno'
+ * TanStack Start 1.131 использует Nitro под капотом. Nitro выбирает preset
+ * по env-переменной NITRO_PRESET, либо детектит автоматически (Vercel ставит
+ * VERCEL=1, и Nitro сам ставит preset: 'vercel').
  *
- * При target: 'vercel' build генерирует .vercel/output/ (Vercel Build Output API v3),
- * который Vercel распознаёт автоматически без указания outputDirectory.
+ * Локально мы ставим vercel preset руками — это даёт правильный .vercel/output/
+ * для последующего деплоя.
  *
- * customViteReactPlugin: true — отключает встроенный viteReact, чтобы мы могли
- * подключить его явно вторым плагином (так требует Tailwind v4).
+ * Чтобы запустить SSR локально как обычный Node-server — закомментируй строчку
+ * с process.env.NITRO_PRESET (или поставь "node-server").
  */
+process.env.NITRO_PRESET = process.env.NITRO_PRESET ?? "vercel";
+
 export default defineConfig({
   plugins: [
     tsConfigPaths(),
     tailwindcss(),
     tanstackStart({
-      target: "vercel",
       customViteReactPlugin: true,
     }),
     viteReact(),
