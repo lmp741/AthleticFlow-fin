@@ -15,9 +15,10 @@ function getSupabaseUrl(): string {
   const isProd = import.meta.env.PROD; // true в production-билде
 
   if (isBrowser && isProd) {
-    // Относительный путь — браузер пойдёт на наш же домен,
+    // Абсолютный URL через наш домен — браузер пойдёт на наш же домен,
     // Vercel rewrite переправит на supabase.co
-    return '/sb';
+    // (Supabase JS требует полный https:// URL)
+    return `${window.location.origin}/sb`;
   }
 
   // Сервер или локальная разработка — прямой доступ
