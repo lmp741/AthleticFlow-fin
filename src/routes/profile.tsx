@@ -1,17 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Calendar, Loader2, MapPin, Upload, User as UserIcon, CreditCard, Sparkles, ShieldCheck, X, Plus, Check, Trash2, Star, Image as ImageIcon, Video, Trophy, ThumbsUp } from "lucide-react";
+import { Bell, BellOff, Calendar, Loader2, MapPin, Upload, User as UserIcon, CreditCard, Sparkles, ShieldCheck, X, Plus, Check, Trash2, Star, Image as ImageIcon, Video, Trophy, ThumbsUp } from "lucide-react";
 import { SiteHeader, SiteFooter } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { toast } from "sonner";
 import { formatRuPhone, isValidRuPhone, toE164Ru } from "@/lib/phone";
 import { PhoneVerifyDialog } from "@/components/auth/PhoneVerifyDialog";
+import { isPushSupported, getPushStatus, enablePush, disablePush, type PushStatus } from "@/lib/push";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({ meta: [{ title: "Профиль — Athletic Flow" }] }),
@@ -475,6 +477,7 @@ function ProfilePage() {
         {/* History */}
         <div className="space-y-8">
           <CardReminder />
+          <PushSettings />
           <RatingsSection ratings={ratings} raters={raters} />
           {user && <MediaSection userId={user.id} isOwner />}
           {user && <GoalsSection userId={user.id} pastGames={past} />}
@@ -592,6 +595,111 @@ function detectBrand(digits: string): string {
   if (/^3[47]/.test(digits)) return "Amex";
   if (/^(2200|2201|2202|2203|2204)/.test(digits)) return "МИР";
   return "Карта";
+}
+
+/**
+ * Карточка управления Web Push-уведомлениями.
+ * Состояния:
+ *   - unsupported: браузер не поддерживает Web Push (iOS Safari < 16.4, и т.д.)
+ *   - not-configured: на сервере не настроен VAPID — показываем заглушку для админа
+ *   - denied: юзер ранее отказал, объясняем как включить в настройках браузера
+ *   - subscribed: всё включено, можно выключить
+ *   - default: подписки нет — кнопка «Включить»
+ */
+function PushSettings() {
+  const [status, setStatus] = useState<PushStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isPushSupported()) {
+      setStatus("unsupported");
+      return;
+    }
+    getPushStatus().then(setStatus);
+  }, []);
+
+  const handleEnable = async () => {
+    setBusy(true);
+    const res = await enablePush();
+    setBusy(false);
+    if (res.ok) {
+      setStatus("subscribed");
+      toast.success("Уведомления включены");
+    } else {
+      const map: Record<string, string> = {
+        denied: "Разрешения отозваны. Открой настройки сайта в браузере и разреши уведомления.",
+        unsupported: "Браузер не поддерживает уведомления.",
+        "not-configured": "VAPID-ключ не настроен на сервере. Сообщи админу.",
+        "no-keys": "Не удалось получить ключи подписки. Попробуй ещё раз.",
+        "not-authenticated": "Нужно войти в аккаунт.",
+      };
+      toast.error(map[res.reason ?? ""] ?? res.reason ?? "Не удалось включить");
+      if (res.reason) setStatus(res.reason as PushStatus);
+    }
+  };
+
+  const handleDisable = async () => {
+    setBusy(true);
+    const res = await disablePush();
+    setBusy(false);
+    if (res.ok) {
+      setStatus("default");
+      toast.success("Уведомления выключены");
+    } else {
+      toast.error(res.reason ?? "Не удалось выключить");
+    }
+  };
+
+  if (status === null) {
+    return (
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground">Проверяем уведомления…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-brand text-primary-foreground shadow-glow">
+            {status === "subscribed" ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-xl font-bold leading-tight">Уведомления</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {status === "subscribed"
+                ? "Получаешь пуш-уведомления о сообщениях, оценках и приглашениях."
+                : status === "denied"
+                  ? "Разрешения отозваны. Включи в настройках сайта в браузере."
+                  : status === "unsupported"
+                    ? "Браузер не поддерживает Web Push. На iPhone нужно добавить сайт на главный экран (iOS 16.4+)."
+                    : status === "not-configured"
+                      ? "Сервер не настроен. Сообщи администратору."
+                      : "Включи, чтобы не пропускать сообщения и приглашения."}
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0">
+          <Switch
+            checked={status === "subscribed"}
+            disabled={
+              busy ||
+              status === "unsupported" ||
+              status === "denied" ||
+              status === "not-configured"
+            }
+            onCheckedChange={(v) => (v ? handleEnable() : handleDisable())}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CardReminder() {
@@ -1293,19 +1401,19 @@ function GoalsSection({ userId, pastGames }: { userId: string; pastGames: GameIt
 
   return (
     <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-brand text-primary-foreground shadow-glow">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-brand text-primary-foreground shadow-glow">
             <Trophy className="h-5 w-5" />
           </div>
-          <div>
-            <h3 className="font-display text-xl font-bold">Забитые голы</h3>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-xl font-bold leading-tight">Забитые голы</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
               Подтверждается партнёрами по игре. Нужно ≥ 3 согласований.
             </p>
           </div>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Всего</p>
           <p className="font-display text-3xl font-bold">{total}</p>
         </div>

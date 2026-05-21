@@ -657,14 +657,14 @@ function LocationGate({ onPick }: { onPick: (loc: UserLoc) => void }) {
           onClick={useGps}
           disabled={busy !== null}
           size="lg"
-          className="mt-8 w-full bg-gradient-brand text-primary-foreground hover:opacity-90"
+          className="mt-8 h-auto min-h-12 w-full whitespace-normal break-words px-4 py-3 text-center leading-tight bg-gradient-brand text-primary-foreground hover:opacity-90"
         >
           {busy === "gps" ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
           ) : (
-            <Navigation className="mr-2 h-4 w-4" />
+            <Navigation className="mr-2 h-4 w-4 shrink-0" />
           )}
-          Использовать моё местоположение
+          <span className="block">Использовать моё местоположение</span>
         </Button>
 
         <div className="my-6 flex items-center gap-3">

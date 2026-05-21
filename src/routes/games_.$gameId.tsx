@@ -17,6 +17,13 @@ import { toast } from "sonner";
 
 
 export const Route = createFileRoute("/games_/$gameId")({
+  // ?invite=<uuid> — токен для доступа к приватной игре по ссылке (в т.ч. для гостей).
+  validateSearch: (search: Record<string, unknown>) => {
+    const inv = typeof search.invite === "string" ? search.invite : undefined;
+    // Лёгкая валидация uuid — чтобы не плодить мусорные RPC-вызовы.
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return { invite: inv && uuidRe.test(inv) ? inv : undefined };
+  },
   head: ({ params }) => {
     const url = `https://af-sport.ru/games/${params.gameId}`;
     const title = "Игра — присоединиться к команде — Athletic Flow";
@@ -47,6 +54,7 @@ interface GameDetail {
   description: string | null;
   organizer_id: string;
   is_private: boolean;
+  invite_token: string | null;
   stadium: { id: string; name: string; address: string } | null;
 }
 
@@ -80,6 +88,7 @@ function fmtTime(iso: string) {
 
 function GamePage() {
   const { gameId } = Route.useParams();
+  const { invite: inviteToken } = Route.useSearch();
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -87,6 +96,8 @@ function GamePage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  // Доступ через invite — карточка видна, но без чата/деталей участников.
+  const [viaInvite, setViaInvite] = useState(false);
   const [organizer, setOrganizer] = useState<{
     id: string;
     display_name: string | null;
@@ -99,18 +110,67 @@ function GamePage() {
   } | null>(null);
 
   const loadGame = async () => {
+    // 1. Обычный select под текущей сессией (для авторизованных — работает
+    //    и для приватных по RLS policy «private games readable by authenticated via link»).
     const { data, error } = await supabase
       .from("games")
       .select(
-        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, stadium:stadiums(id,name,address)"
+        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, stadium:stadiums(id,name,address)"
       )
       .eq("id", gameId)
       .maybeSingle();
-    if (error || !data) {
+    if (!error && data) {
+      setGame(data as unknown as GameDetail);
       setLoading(false);
       return;
     }
-    setGame(data as unknown as GameDetail);
+    // 2. Fallback по invite-токену из URL — работает для гостей (anon).
+    //    RPC обходит RLS, но фильтрует по uuid-токену, поэтому требует знание ссылки.
+    if (inviteToken) {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_game_by_invite", {
+        p_token: inviteToken,
+      });
+      if (!rpcErr && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+        const row = rpcData[0] as {
+          id: string;
+          sport: string;
+          level: string;
+          starts_at: string;
+          ends_at: string;
+          price_per_player: number;
+          slots_total: number;
+          description: string | null;
+          organizer_id: string;
+          is_private: boolean;
+          stadium_id: string | null;
+          stadium_name: string | null;
+          stadium_address: string | null;
+        };
+        setGame({
+          id: row.id,
+          sport: row.sport,
+          level: row.level,
+          starts_at: row.starts_at,
+          ends_at: row.ends_at,
+          price_per_player: row.price_per_player,
+          slots_total: row.slots_total,
+          description: row.description,
+          organizer_id: row.organizer_id,
+          is_private: row.is_private,
+          invite_token: inviteToken,
+          stadium: row.stadium_id
+            ? {
+                id: row.stadium_id,
+                name: row.stadium_name ?? "",
+                address: row.stadium_address ?? "",
+              }
+            : null,
+        });
+        setViaInvite(true);
+        setLoading(false);
+        return;
+      }
+    }
     setLoading(false);
   };
 
@@ -399,7 +459,11 @@ function GamePage() {
                   <p className="text-sm text-muted-foreground">
                     Не хватает игроков? Пригласи друга по никнейму.
                   </p>
-                  <InviteFriendButton gameId={game.id} userId={user!.id} />
+                  <InviteFriendButton
+                    gameId={game.id}
+                    userId={user!.id}
+                    inviteToken={game.invite_token}
+                  />
                 </div>
               )}
             </div>
@@ -809,6 +873,16 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow textarea по содержимому, как в Telegram.
+  // Лимит сверху держим через max-h на css, чтобы не съесть весь экран.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 132) + "px";
+  }, [text]);
 
   const load = async () => {
     const { data, error } = await supabase
@@ -996,14 +1070,16 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
           <Button
             type="button"
             variant="outline"
-            size="lg"
+            size="icon"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             aria-label="Прикрепить фото"
+            className="h-11 w-11 shrink-0"
           >
             <ImagePlus className="h-4 w-4" />
           </Button>
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -1014,13 +1090,14 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
             }}
             placeholder="Сообщение команде…"
             rows={1}
-            className="flex min-h-11 max-h-[8.25rem] w-full resize-none overflow-y-auto rounded-md border border-input bg-background px-3 py-2.5 font-mono text-[13px] leading-snug ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="block min-h-11 max-h-[8.25rem] w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-input bg-background px-3 py-2.5 text-sm leading-snug ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           <Button
             type="submit"
-            size="lg"
+            size="icon"
             disabled={uploading || (!text.trim() && !imageFile)}
-            className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+            aria-label="Отправить"
+            className="h-11 w-11 shrink-0 bg-gradient-brand text-primary-foreground hover:opacity-90"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
@@ -1156,7 +1233,15 @@ function RatePlayerButton({
   );
 }
 
-function InviteFriendButton({ gameId, userId }: { gameId: string; userId: string }) {
+function InviteFriendButton({
+  gameId,
+  userId,
+  inviteToken,
+}: {
+  gameId: string;
+  userId: string;
+  inviteToken: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1167,9 +1252,12 @@ function InviteFriendButton({ gameId, userId }: { gameId: string; userId: string
   const [friendQuery, setFriendQuery] = useState("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
+  // С токеном — ссылку откроет даже гость / неавторизованный.
+  // Без токена (старые игры до миграции / публичные) — обычная ссылка.
+  const inviteSuffix = inviteToken ? `?invite=${inviteToken}` : "";
   const inviteLink = typeof window !== "undefined"
-    ? `${window.location.origin}/games/${gameId}`
-    : `/games/${gameId}`;
+    ? `${window.location.origin}/games/${gameId}${inviteSuffix}`
+    : `/games/${gameId}${inviteSuffix}`;
 
   // Load friends when dialog opens
   useEffect(() => {
