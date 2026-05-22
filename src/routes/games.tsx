@@ -105,6 +105,68 @@ async function geocodeMoscow(
   return null;
 }
 
+interface SuggestItem {
+  lat: number;
+  lng: number;
+  label: string;
+}
+
+/**
+ * Запрос автодополнения адреса. Если в строке нет «москва» — префиксуем,
+ * чтобы Я.Геокодер не отдавал результаты из других городов.
+ */
+async function suggestMoscow(text: string, signal?: AbortSignal): Promise<SuggestItem[]> {
+  const t = text.trim();
+  if (t.length < 3) return [];
+  const looksLikeMoscow = /москв|moscow/i.test(t);
+  const q = looksLikeMoscow ? t : `Москва, ${t}`;
+  try {
+    const r = await fetch(`/api/geocode-suggest?q=${encodeURIComponent(q)}`, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    if (!r.ok) return [];
+    const data = (await r.json()) as { items?: SuggestItem[] };
+    return Array.isArray(data.items) ? data.items : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Хук с дебаунсом для автодополнения. 350ms — комфорт между «инстант» и «не сожрать квоту».
+ */
+function useAddressSuggest(input: string, enabled: boolean) {
+  const [items, setItems] = useState<SuggestItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!enabled) {
+      setItems([]);
+      return;
+    }
+    const t = input.trim();
+    if (t.length < 3) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const ctrl = new AbortController();
+    const id = window.setTimeout(async () => {
+      const list = await suggestMoscow(t, ctrl.signal);
+      if (!ctrl.signal.aborted) {
+        setItems(list);
+        setLoading(false);
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(id);
+      ctrl.abort();
+    };
+  }, [input, enabled]);
+  return { items, loading };
+}
+
 const moscowSpots: { name: string; lat: number; lng: number }[] = [
   { name: "Центр (Кремль)", lat: 55.752, lng: 37.6175 },
   { name: "Сокольники", lat: 55.7942, lng: 37.677 },
@@ -597,6 +659,18 @@ function GamesPage() {
 function LocationGate({ onPick }: { onPick: (loc: UserLoc) => void }) {
   const [busy, setBusy] = useState<"gps" | "search" | null>(null);
   const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+  // Suggest активен только когда инпут в фокусе. После клика/Enter — скрываем.
+  const { items: suggestions, loading: suggestLoading } = useAddressSuggest(query, focused);
+
+  const pickSuggestion = (s: SuggestItem) => {
+    setFocused(false);
+    onPick({
+      lat: s.lat,
+      lng: s.lng,
+      label: s.label.length > 40 ? s.label.slice(0, 40) + "…" : s.label,
+    });
+  };
 
   const useGps = () => {
     if (!navigator.geolocation) {
@@ -673,14 +747,41 @@ function LocationGate({ onPick }: { onPick: (loc: UserLoc) => void }) {
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        <form onSubmit={searchAddress} className="flex gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Адрес или метро в Москве"
-            maxLength={120}
-            className="h-11"
-          />
+        <form onSubmit={searchAddress} className="relative flex gap-2">
+          <div className="relative flex-1">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setFocused(true)}
+              // Маленький delay перед blur — иначе клик по подсказке не успеет отработать.
+              onBlur={() => window.setTimeout(() => setFocused(false), 150)}
+              placeholder="Адрес или метро в Москве"
+              maxLength={120}
+              className="h-11"
+              autoComplete="off"
+            />
+            {focused && query.trim().length >= 3 && (suggestLoading || suggestions.length > 0) && (
+              <div className="absolute left-0 right-0 top-12 z-20 overflow-hidden rounded-xl border border-border bg-popover shadow-elegant">
+                {suggestLoading && suggestions.length === 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Ищу варианты…
+                  </div>
+                )}
+                {suggestions.map((s, i) => (
+                  <button
+                    key={`${s.lat}-${s.lng}-${i}`}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickSuggestion(s)}
+                    className="flex w-full items-center gap-2 border-b border-border/40 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent"
+                  >
+                    <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button type="submit" disabled={busy !== null || !query.trim()} className="h-11">
             {busy === "search" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Найти"}
           </Button>
@@ -716,6 +817,19 @@ function ManualLocationBar({
 }) {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const { items: suggestions, loading: suggestLoading } = useAddressSuggest(query, focused);
+
+  const pickSuggestion = (s: SuggestItem) => {
+    setFocused(false);
+    setQuery("");
+    onPick({
+      lat: s.lat,
+      lng: s.lng,
+      label: s.label.length > 30 ? s.label.slice(0, 30) + "…" : s.label,
+    });
+    toast.success("Местоположение обновлено");
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -743,15 +857,41 @@ function ManualLocationBar({
   };
 
   return (
-    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
-      <form onSubmit={submit} className="flex flex-1 gap-2 sm:max-w-md">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Адрес или метро в Москве"
-          maxLength={120}
-          className="h-10 border-white/30 bg-white/10 text-white placeholder:text-white/60"
-        />
+    <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-start">
+      <form onSubmit={submit} className="relative flex flex-1 gap-2 sm:max-w-md">
+        <div className="relative flex-1">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => window.setTimeout(() => setFocused(false), 150)}
+            placeholder="Адрес или метро в Москве"
+            maxLength={120}
+            autoComplete="off"
+            className="h-10 border-white/30 bg-white/10 text-white placeholder:text-white/60"
+          />
+          {focused && query.trim().length >= 3 && (suggestLoading || suggestions.length > 0) && (
+            <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-xl border border-border bg-popover text-foreground shadow-elegant">
+              {suggestLoading && suggestions.length === 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Ищу варианты…
+                </div>
+              )}
+              {suggestions.map((s, i) => (
+                <button
+                  key={`${s.lat}-${s.lng}-${i}`}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickSuggestion(s)}
+                  className="flex w-full items-center gap-2 border-b border-border/40 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent"
+                >
+                  <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <Button
           type="submit"
           size="sm"

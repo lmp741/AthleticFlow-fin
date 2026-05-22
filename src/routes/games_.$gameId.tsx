@@ -459,11 +459,20 @@ function GamePage() {
                   <p className="text-sm text-muted-foreground">
                     Не хватает игроков? Пригласи друга по никнейму.
                   </p>
-                  <InviteFriendButton
-                    gameId={game.id}
-                    userId={user!.id}
-                    inviteToken={game.invite_token}
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    <InviteFriendButton
+                      gameId={game.id}
+                      userId={user!.id}
+                      inviteToken={game.invite_token}
+                    />
+                    {!full && (
+                      <UrgentReplacementButton
+                        gameId={game.id}
+                        sport={game.sport}
+                        stadiumName={game.stadium?.name ?? ""}
+                      />
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1107,6 +1116,92 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
   );
 }
 
+/**
+ * Кнопка «Срочная замена» — рассылает уведомление игрокам, которые играли
+ * на этом стадионе в том же спорте за последние 60 дней.
+ * Антиспам — 1 раз в час на игру (контролит RPC).
+ */
+function UrgentReplacementButton({
+  gameId,
+  sport,
+  stadiumName,
+}: {
+  gameId: string;
+  sport: string;
+  stadiumName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const sendRequest = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("request_urgent_replacement", {
+      p_game_id: gameId,
+    });
+    setBusy(false);
+    if (error) {
+      // RPC raise EXCEPTION — текст оборачивается в error.message
+      const msg = error.message ?? "Не удалось отправить";
+      if (msg.includes("recently")) {
+        toast.error("Уже отправлено в последний час. Подожди немного.");
+      } else if (msg.includes("started")) {
+        toast.error("Игра уже началась или закончилась.");
+      } else {
+        toast.error(msg);
+      }
+      return;
+    }
+    const count = (data as { recipients_count?: number } | null)?.recipients_count ?? 0;
+    if (count === 0) {
+      toast("Нет подходящих игроков рядом — попробуй пригласить друзей вручную.");
+    } else {
+      toast.success(`Уведомление отправлено · ${count} ${count === 1 ? "игроку" : "игрокам"}`);
+    }
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        className="border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+        onClick={() => setOpen(true)}
+      >
+        <Zap className="mr-1 h-3.5 w-3.5" /> Срочная замена
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Срочно нужна замена?</DialogTitle>
+            <DialogDescription>
+              Мы пришлём уведомление игрокам, которые играли в{" "}
+              <b>{sport}</b>
+              {stadiumName ? (
+                <>
+                  {" "}на «<b>{stadiumName}</b>»
+                </>
+              ) : null}{" "}за последние 60 дней. Кнопка работает не чаще одного раза в час.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+              Отмена
+            </Button>
+            <Button
+              onClick={sendRequest}
+              disabled={busy}
+              className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Отправить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function RatePlayerButton({
   gameId,
   rateeId,
@@ -1146,17 +1241,19 @@ function RatePlayerButton({
   const submit = async () => {
     if (!user) return;
     setSaving(true);
+    const isUpdate = !!existing;
     if (existing) {
       const { error } = await supabase
         .from("user_ratings")
         .update({ score, comment: comment.trim() || null })
         .eq("id", existing.id);
       setSaving(false);
-      if (error) toast.error(error.message);
-      else {
-        toast.success("Оценка обновлена");
-        setOpen(false);
+      if (error) {
+        toast.error(error.message);
+        return;
       }
+      toast.success("Оценка обновлена");
+      setOpen(false);
     } else {
       const { error } = await supabase.from("user_ratings").insert({
         rater_id: user.id,
@@ -1166,12 +1263,31 @@ function RatePlayerButton({
         comment: comment.trim() || null,
       });
       setSaving(false);
-      if (error) toast.error(error.message);
-      else {
-        toast.success("Спасибо за оценку!");
-        setExisting({ id: "tmp", score, comment: comment.trim() || null });
-        setOpen(false);
+      if (error) {
+        toast.error(error.message);
+        return;
       }
+      toast.success("Спасибо за оценку!");
+      setExisting({ id: "tmp", score, comment: comment.trim() || null });
+      setOpen(false);
+    }
+    // Шлём уведомление получателю оценки. Только при первой оценке (не апдейте) —
+    // иначе на каждое исправление будет лететь спам. Ошибки игнорим: rate-уведомление
+    // не критично, основная запись уже создана.
+    if (!isUpdate) {
+      const trimmed = comment.trim();
+      supabase
+        .rpc("enqueue_notification", {
+          p_user_id: rateeId,
+          p_type: "rating_received",
+          p_title: `Тебя оценил партнёр — ${score} ★`,
+          p_body: trimmed ? trimmed.slice(0, 200) : null,
+          p_url: "/profile",
+          p_payload: { game_id: gameId, score, has_review: !!trimmed },
+        })
+        .then(() => {
+          /* no-op */
+        });
     }
   };
 

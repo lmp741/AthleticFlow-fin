@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { Bell, UserPlus, Check, X, Calendar, Users, Loader2 } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Bell, UserPlus, Check, X, Calendar, Users, Loader2, MessageCircle, Star, Zap, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -35,6 +35,27 @@ interface GameInvite {
   starts_at: string;
   stadium_name: string | null;
 }
+// Уведомление из таблицы notifications — генерится сервером (send-push, триггеры).
+interface NotifRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  url: string | null;
+  read_at: string | null;
+  created_at: string;
+  payload: Record<string, unknown>;
+}
+
+// Иконка под тип уведомления. Если нет в карте — общий Sparkles.
+function iconForType(type: string) {
+  if (type.startsWith("game_chat") || type === "dm_message") return MessageCircle;
+  if (type === "rating_received" || type === "review_received" || type === "review_liked") return Star;
+  if (type === "urgent_replacement") return Zap;
+  if (type === "game_invite") return Calendar;
+  if (type === "friend_request") return UserPlus;
+  return Sparkles;
+}
 
 function initials(name?: string | null) {
   if (!name) return "?";
@@ -50,13 +71,55 @@ function fmtDate(iso: string) {
   });
 }
 
+// Ключ под last-seen хранится по user.id, чтобы у разных аккаунтов в одном
+// браузере не смешивался счётчик «новых».
+function lastSeenKey(userId: string) {
+  return `af.notif.lastSeen.${userId}`;
+}
+
+function readLastSeen(userId: string): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = localStorage.getItem(lastSeenKey(userId));
+    if (!raw) return 0;
+    const v = Number(raw);
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeLastSeen(userId: string, ts: number) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(lastSeenKey(userId), String(ts));
+  } catch {
+    /* noop */
+  }
+}
+
 export function NotificationsBell() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [friendReqs, setFriendReqs] = useState<FriendReq[]>([]);
   const [convInvites, setConvInvites] = useState<ConvInvite[]>([]);
   const [gameInvites, setGameInvites] = useState<GameInvite[]>([]);
+  const [notifs, setNotifs] = useState<NotifRow[]>([]);
+  // Метка времени «последнего просмотра колокольчика».
+  // Всё, у чего created_at/joined_at новее этой метки — считается непрочитанным
+  // и показывается красным бейджем. Открытие popover сдвигает метку на now().
+  const [lastSeenAt, setLastSeenAt] = useState<number>(0);
+
+  // При смене пользователя (или первом монтировании) подтягиваем метку из localStorage.
+  useEffect(() => {
+    if (!user) {
+      setLastSeenAt(0);
+      return;
+    }
+    setLastSeenAt(readLastSeen(user.id));
+  }, [user?.id]);
 
   const load = async () => {
     if (!user) return;
@@ -151,6 +214,17 @@ export function NotificationsBell() {
       setGameInvites([]);
     }
 
+    // Notifications из новой унифицированной таблицы — chat, ratings, invites
+    // через send-push и триггеры. Берём последние 20, неважно read/unread —
+    // отдадим в UI и подсветим непрочитанные.
+    const { data: nrows } = await supabase
+      .from("notifications")
+      .select("id, type, title, body, url, read_at, created_at, payload")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setNotifs((nrows ?? []) as NotifRow[]);
+
     setLoading(false);
   };
 
@@ -180,7 +254,53 @@ export function NotificationsBell() {
   }, [user?.id]);
 
 
-  const total = friendReqs.length + convInvites.length + gameInvites.length;
+  // Всего элементов в фиде (для пустого состояния).
+  const total = friendReqs.length + convInvites.length + gameInvites.length + notifs.length;
+  // Непрочитанных — две составляющие:
+  //  1. notifications.read_at IS NULL — серверные уведомления (chat, rating, etc)
+  //  2. friend reqs + conv invites, появившиеся после lastSeenAt
+  // Game invites не считаем — это «предстоящие игры», а не новое событие.
+  const unreadNotifs = notifs.filter((n) => !n.read_at).length;
+  const unread =
+    unreadNotifs +
+    friendReqs.filter((r) => new Date(r.created_at).getTime() > lastSeenAt).length +
+    convInvites.filter((c) => new Date(c.joined_at).getTime() > lastSeenAt).length;
+
+  // Открытие колокольчика → метка «прочитано» = сейчас + батч-update read_at.
+  // Закрытие ничего не меняет (всё уже отмечено при открытии).
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next && user) {
+      const now = Date.now();
+      setLastSeenAt(now);
+      writeLastSeen(user.id, now);
+      // Помечаем все непрочитанные notifications как read на сервере.
+      // RPC обновляет только свои строки (auth.uid()) и только непрочитанные.
+      if (unreadNotifs > 0) {
+        supabase.rpc("mark_all_notifications_read").then(() => {
+          // Локально обновим read_at чтобы UI сразу отразил.
+          setNotifs((prev) =>
+            prev.map((n) => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })),
+          );
+        });
+      }
+    }
+  };
+
+  // Клик по нотификации → переход и помечаем прочитанной (если ещё не).
+  const handleNotifClick = async (n: NotifRow) => {
+    setOpen(false);
+    if (!n.read_at) {
+      // Оптимистично обновляем локально, RPC отрабатывает асинхронно.
+      setNotifs((prev) =>
+        prev.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)),
+      );
+      supabase.rpc("mark_notifications_read", { p_ids: [n.id] });
+    }
+    if (n.url) {
+      navigate({ to: n.url });
+    }
+  };
 
   const accept = async (f: FriendReq) => {
     const { error } = await supabase
@@ -199,13 +319,13 @@ export function NotificationsBell() {
   if (!user) return null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Уведомления">
           <Bell className="h-5 w-5" />
-          {total > 0 && (
+          {unread > 0 && (
             <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-              {total > 9 ? "9+" : total}
+              {unread > 9 ? "9+" : unread}
             </span>
           )}
         </Button>
@@ -221,6 +341,51 @@ export function NotificationsBell() {
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               Нет новых уведомлений
             </p>
+          )}
+
+          {notifs.length > 0 && (
+            <div className="px-2 py-2">
+              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Sparkles className="mr-1 inline h-3 w-3" /> События
+              </p>
+              <ul className="space-y-1">
+                {notifs.map((n) => {
+                  const Icon = iconForType(n.type);
+                  return (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleNotifClick(n)}
+                        className={`flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-muted/40 ${
+                          n.read_at ? "" : "bg-primary/5"
+                        }`}
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-brand text-primary-foreground">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`truncate text-sm ${n.read_at ? "font-medium" : "font-semibold"}`}>
+                            {n.title}
+                          </p>
+                          {n.body && (
+                            <p className="line-clamp-2 text-[12px] text-muted-foreground">{n.body}</p>
+                          )}
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {fmtDate(n.created_at)}
+                          </p>
+                        </div>
+                        {!n.read_at && (
+                          <span
+                            className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-destructive"
+                            aria-label="Не прочитано"
+                          />
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
 
           {friendReqs.length > 0 && (

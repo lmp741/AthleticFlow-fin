@@ -515,6 +515,72 @@ function RatingsSection({
   ratings: RatingItem[];
   raters: Record<string, { username: string | null; display_name: string | null; avatar_url: string | null }>;
 }) {
+  const { user } = useAuth();
+  // votes[ratingId] = { likes, dislikes, myVote: -1|0|1 }
+  const [votes, setVotes] = useState<Record<string, { likes: number; dislikes: number; myVote: number }>>({});
+
+  // Лайки/дизлайки имеют смысл только на отзывы с комментарием.
+  const reviewIds = ratings.filter((r) => r.comment).map((r) => r.id);
+
+  useEffect(() => {
+    if (reviewIds.length === 0) {
+      setVotes({});
+      return;
+    }
+    let alive = true;
+    (async () => {
+      // Один запрос на все голоса по интересующим отзывам.
+      const { data } = await supabase
+        .from("rating_review_votes")
+        .select("rating_id, voter_id, value")
+        .in("rating_id", reviewIds);
+      if (!alive) return;
+      const agg: Record<string, { likes: number; dislikes: number; myVote: number }> = {};
+      reviewIds.forEach((id) => (agg[id] = { likes: 0, dislikes: 0, myVote: 0 }));
+      (data ?? []).forEach((v) => {
+        const bucket = agg[v.rating_id];
+        if (!bucket) return;
+        if (v.value === 1) bucket.likes++;
+        else if (v.value === -1) bucket.dislikes++;
+        if (user && v.voter_id === user.id) bucket.myVote = v.value;
+      });
+      setVotes(agg);
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewIds.join(","), user?.id]);
+
+  const vote = async (ratingId: string, raterId: string, next: number) => {
+    if (!user) return;
+    if (raterId === user.id) return; // нельзя на свой
+    const cur = votes[ratingId]?.myVote ?? 0;
+    const value = cur === next ? 0 : next; // повторный клик — отмена
+    // Оптимистично обновляем UI.
+    setVotes((prev) => {
+      const b = prev[ratingId] ?? { likes: 0, dislikes: 0, myVote: 0 };
+      const next_b = { ...b };
+      // вычитаем старый голос
+      if (b.myVote === 1) next_b.likes--;
+      else if (b.myVote === -1) next_b.dislikes--;
+      // добавляем новый
+      if (value === 1) next_b.likes++;
+      else if (value === -1) next_b.dislikes++;
+      next_b.myVote = value;
+      return { ...prev, [ratingId]: next_b };
+    });
+    const { error } = await supabase.rpc("vote_rating_review", {
+      p_rating_id: ratingId,
+      p_value: value,
+    });
+    if (error) {
+      toast.error(error.message);
+      // На ошибку — откатываемся: проще перезагрузить, но для MVP оставим
+      // оптимистичное состояние. Реальный rollback можно добавить позже.
+    }
+  };
+
   const avg =
     ratings.length === 0
       ? null
@@ -544,6 +610,8 @@ function RatingsSection({
         <div className="grid gap-3 sm:grid-cols-2">
           {ratings.slice(0, 6).map((r) => {
             const rp = raters[r.rater_id];
+            const v = votes[r.id];
+            const canVote = !!user && r.rater_id !== user.id && !!r.comment;
             return (
               <div key={r.id} className="rounded-2xl border border-border bg-background p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -569,6 +637,38 @@ function RatingsSection({
                 </div>
                 {r.comment && (
                   <p className="mt-2 text-sm text-muted-foreground">{r.comment}</p>
+                )}
+                {r.comment && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!canVote}
+                      onClick={() => vote(r.id, r.rater_id, 1)}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${
+                        v?.myVote === 1
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
+                          : "border-border text-muted-foreground hover:border-primary/40"
+                      } ${canVote ? "" : "cursor-default opacity-60"}`}
+                      aria-label="Полезный отзыв"
+                    >
+                      <ThumbsUp className="h-3.5 w-3.5" />
+                      {(v?.likes ?? 0) > 0 ? v?.likes : ""}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canVote}
+                      onClick={() => vote(r.id, r.rater_id, -1)}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${
+                        v?.myVote === -1
+                          ? "border-destructive/40 bg-destructive/10 text-destructive"
+                          : "border-border text-muted-foreground hover:border-primary/40"
+                      } ${canVote ? "" : "cursor-default opacity-60"}`}
+                      aria-label="Не согласен с отзывом"
+                    >
+                      <ThumbsUp className="h-3.5 w-3.5 rotate-180" />
+                      {(v?.dislikes ?? 0) > 0 ? v?.dislikes : ""}
+                    </button>
+                  </div>
                 )}
               </div>
             );
