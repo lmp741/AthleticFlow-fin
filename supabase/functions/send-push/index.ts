@@ -62,6 +62,7 @@ interface PushPayload {
   url?: string;
   payload?: Record<string, unknown>;
   skip_push?: boolean;
+  skip_notification_insert?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -100,19 +101,23 @@ Deno.serve(async (req) => {
   }
 
   // 1. Пишем в notifications (по строке на user_id). Bell это сразу подхватит.
-  const notifRows = input.user_ids.map((uid) => ({
-    user_id: uid,
-    type: input.type,
-    title: input.title,
-    body: input.body ?? null,
-    url: input.url ?? null,
-    payload: input.payload ?? {},
-  }));
+  //    Пропускаем INSERT, если вызвано из PG-триггера (уведомление уже вставлено).
+  let notifCount = input.user_ids.length;
+  if (!input.skip_notification_insert) {
+    const notifRows = input.user_ids.map((uid) => ({
+      user_id: uid,
+      type: input.type,
+      title: input.title,
+      body: input.body ?? null,
+      url: input.url ?? null,
+      payload: input.payload ?? {},
+    }));
 
-  const { error: insErr } = await supabase.from("notifications").insert(notifRows);
-  if (insErr) {
-    console.error("Failed to insert notifications:", insErr.message);
-    // Не падаем — пуш всё равно попробуем.
+    const { error: insErr } = await supabase.from("notifications").insert(notifRows);
+    if (insErr) {
+      console.error("Failed to insert notifications:", insErr.message);
+      // Не падаем — пуш всё равно попробуем.
+    }
   }
 
   // 2. Шлём Web Push на все подписки этих юзеров.
@@ -167,7 +172,7 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       ok: true,
-      notifications_inserted: notifRows.length,
+      notifications_inserted: input.skip_notification_insert ? 0 : notifCount,
       push_sent: pushSent,
       push_failed: pushFailed,
     }),

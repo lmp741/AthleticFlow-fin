@@ -48,7 +48,11 @@ export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Athletic Flow" },
+      { name: "theme-color", content: "#22c55e" },
       { title: "Athletic Flow — найди игру и собери команду" },
       {
         name: "description",
@@ -86,8 +90,9 @@ export const Route = createRootRoute({
       { rel: "stylesheet", href: appCss },
       // Favicon — PNG из public/favicon.png (заменил вручную).
       { rel: "icon", type: "image/png", href: "/favicon.png" },
-      { rel: "apple-touch-icon", href: "/favicon.png" },
+      { rel: "apple-touch-icon", sizes: "192x192", href: "/icon-192.png" },
       { rel: "shortcut icon", href: "/favicon.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
     scripts: [
       {
@@ -172,6 +177,20 @@ function YmTracker() {
 }
 
 function RootComponent() {
+  // Регистрируем Service Worker при первом рендере для PWA-режима.
+  // Это нужно даже без пушей — иначе iOS PWA не кэширует shell.
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      "serviceWorker" in navigator &&
+      (window.location.protocol === "https:" || window.location.hostname === "localhost")
+    ) {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+        /* SW не поддерживается или заблокирован — не критично */
+      });
+    }
+  }, []);
+
   return (
     <AuthProvider>
       <CallProvider>

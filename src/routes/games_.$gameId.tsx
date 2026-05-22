@@ -1271,24 +1271,8 @@ function RatePlayerButton({
       setExisting({ id: "tmp", score, comment: comment.trim() || null });
       setOpen(false);
     }
-    // Шлём уведомление получателю оценки. Только при первой оценке (не апдейте) —
-    // иначе на каждое исправление будет лететь спам. Ошибки игнорим: rate-уведомление
-    // не критично, основная запись уже создана.
-    if (!isUpdate) {
-      const trimmed = comment.trim();
-      supabase
-        .rpc("enqueue_notification", {
-          p_user_id: rateeId,
-          p_type: "rating_received",
-          p_title: `Тебя оценил партнёр — ${score} ★`,
-          p_body: trimmed ? trimmed.slice(0, 200) : null,
-          p_url: "/profile",
-          p_payload: { game_id: gameId, score, has_review: !!trimmed },
-        })
-        .then(() => {
-          /* no-op */
-        });
-    }
+    // Уведомление о новой оценке отправляется автоматически через
+    // PG-триггер trg_rating_received_notify → notifications → send-push.
   };
 
   return (
