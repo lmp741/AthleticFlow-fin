@@ -22,13 +22,13 @@ const OFFLINE_HTML = `<!DOCTYPE html>
   <title>Athletic Flow — офлайн</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Inter,-apple-system,sans-serif;background:#0a0a0b;color:#e4e4e7;
+    body{font-family:Inter,-apple-system,sans-serif;background:#fafbfc;color:#1a1a2e;
       display:flex;align-items:center;justify-content:center;min-height:100dvh;padding:24px}
     .card{text-align:center;max-width:340px}
     .icon{font-size:48px;margin-bottom:16px}
     h1{font-size:20px;font-weight:600;margin-bottom:8px}
-    p{font-size:14px;color:#a1a1aa;line-height:1.5;margin-bottom:24px}
-    button{background:#22c55e;color:#fff;border:none;border-radius:12px;
+    p{font-size:14px;color:#6b7280;line-height:1.5;margin-bottom:24px}
+    button{background:#2563eb;color:#fff;border:none;border-radius:12px;
       padding:12px 24px;font-size:15px;font-weight:600;cursor:pointer}
     button:active{opacity:.8}
   </style>

@@ -157,6 +157,8 @@
     font-feature-settings: "ss01", "cv11";
     overflow-x: hidden;
     max-width: 100vw;
+    /* PWA safe-area: нижний отступ для home indicator (iPhone X+) */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   /* На всякий случай — корневой #root тоже. TanStack Start mount'ит в него. */
@@ -187,6 +189,64 @@
     color: transparent;
   }
   .ease-smooth { transition-timing-function: var(--ease-smooth); }
+}
+
+/* ===== PWA safe-area (standalone mode) ===== */
+/* Работает только в PWA (добавлено на Home Screen). В браузере — noop. */
+
+.pwa-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pwa-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pwa-safe-x {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Липкий вспомогательный заголовок, который учитывает высоту основного SiteHeader и safe area */
+.sticky-sub-header {
+  position: sticky;
+  top: calc(4rem + env(safe-area-inset-top, 0px));
+}
+
+/* Фикс для фиксированных и липких элементов в standalone-режиме:
+   iOS добавляет status bar сверху и home indicator bar внизу, которые перекрывают элементы. */
+@media (display-mode: standalone) {
+  /* Footer получает нижний отступ для home indicator */
+  footer {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Sheet content (шторки), которые тянутся на всю высоту экрана */
+  [role="dialog"].inset-y-0,
+  [role="dialog"].inset-x-0,
+  [role="dialog"][class*="inset-y-0"],
+  [role="dialog"][class*="inset-x-0"] {
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Перемещаем кнопку закрытия диалогов/штор ниже статус-бара, чтобы на нее можно было нажать */
+  [role="dialog"] button[class*="absolute"][class*="top-"] {
+    top: calc(1rem + env(safe-area-inset-top, 0px)) !important;
+  }
+
+  /* Sheet overlay — не перекрывает status bar */
+  [data-radix-dialog-overlay] {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Фиксированные и липкие (sticky) элементы внизу экрана (чат-ввод, нижние бары) */
+  .fixed.bottom-0,
+  .sticky.bottom-0,
+  [class*="fixed"][class*="bottom-0"],
+  [class*="sticky"][class*="bottom-0"] {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 .stadium-count-tooltip {

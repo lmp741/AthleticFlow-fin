@@ -52,7 +52,7 @@ export const Route = createRootRoute({
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "apple-mobile-web-app-title", content: "Athletic Flow" },
-      { name: "theme-color", content: "#22c55e" },
+      { name: "theme-color", content: "#2563eb" },
       { title: "Athletic Flow — найди игру и собери команду" },
       {
         name: "description",
@@ -185,9 +185,43 @@ function RootComponent() {
       "serviceWorker" in navigator &&
       (window.location.protocol === "https:" || window.location.hostname === "localhost")
     ) {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
-        /* SW не поддерживается или заблокирован — не критично */
-      });
+      let cleanupVisibilityListener: (() => void) | undefined;
+
+      navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .then((reg) => {
+          // Проверяем обновления сразу при загрузке
+          reg.update().catch(() => {});
+
+          // Проверяем обновления при каждом переходе приложения на передний план (foreground)
+          const checkUpdate = () => {
+            if (document.visibilityState === "visible") {
+              reg.update().catch(() => {});
+            }
+          };
+          document.addEventListener("visibilitychange", checkUpdate);
+          cleanupVisibilityListener = () => {
+            document.removeEventListener("visibilitychange", checkUpdate);
+          };
+        })
+        .catch(() => {
+          /* SW не поддерживается или заблокирован — не критично */
+        });
+
+      // Автоматически перезагружаем страницу при активации новой версии Service Worker (skipWaiting)
+      let refreshing = false;
+      const onControllerChange = () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      };
+      navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+      return () => {
+        if (cleanupVisibilityListener) cleanupVisibilityListener();
+        navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      };
     }
   }, []);
 

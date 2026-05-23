@@ -30,6 +30,7 @@ import { Route as GamesGameIdRouteImport } from './routes/games_.$gameId'
 import { Route as FriendsFriendIdRouteImport } from './routes/friends_.$friendId'
 import { Route as ChatsConversationIdRouteImport } from './routes/chats_.$conversationId'
 import { Route as ApiPitchesRouteImport } from './routes/api/pitches'
+import { Route as ApiGeocodeSuggestRouteImport } from './routes/api/geocode-suggest'
 import { Route as ApiGeocodeRouteImport } from './routes/api/geocode'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminLogRouteImport } from './routes/admin.log'
@@ -142,6 +143,11 @@ const ApiPitchesRoute = ApiPitchesRouteImport.update({
   path: '/api/pitches',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGeocodeSuggestRoute = ApiGeocodeSuggestRouteImport.update({
+  id: '/api/geocode-suggest',
+  path: '/api/geocode-suggest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGeocodeRoute = ApiGeocodeRouteImport.update({
   id: '/api/geocode',
   path: '/api/geocode',
@@ -193,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/admin/log': typeof AdminLogRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/geocode': typeof ApiGeocodeRoute
+  '/api/geocode-suggest': typeof ApiGeocodeSuggestRoute
   '/api/pitches': typeof ApiPitchesRoute
   '/chats/$conversationId': typeof ChatsConversationIdRoute
   '/friends/$friendId': typeof FriendsFriendIdRoute
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/admin/log': typeof AdminLogRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/geocode': typeof ApiGeocodeRoute
+  '/api/geocode-suggest': typeof ApiGeocodeSuggestRoute
   '/api/pitches': typeof ApiPitchesRoute
   '/chats/$conversationId': typeof ChatsConversationIdRoute
   '/friends/$friendId': typeof FriendsFriendIdRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/admin/log': typeof AdminLogRoute
   '/admin/users': typeof AdminUsersRoute
   '/api/geocode': typeof ApiGeocodeRoute
+  '/api/geocode-suggest': typeof ApiGeocodeSuggestRoute
   '/api/pitches': typeof ApiPitchesRoute
   '/chats_/$conversationId': typeof ChatsConversationIdRoute
   '/friends_/$friendId': typeof FriendsFriendIdRoute
@@ -282,6 +291,7 @@ export interface FileRouteTypes {
     | '/admin/log'
     | '/admin/users'
     | '/api/geocode'
+    | '/api/geocode-suggest'
     | '/api/pitches'
     | '/chats/$conversationId'
     | '/friends/$friendId'
@@ -310,6 +320,7 @@ export interface FileRouteTypes {
     | '/admin/log'
     | '/admin/users'
     | '/api/geocode'
+    | '/api/geocode-suggest'
     | '/api/pitches'
     | '/chats/$conversationId'
     | '/friends/$friendId'
@@ -339,6 +350,7 @@ export interface FileRouteTypes {
     | '/admin/log'
     | '/admin/users'
     | '/api/geocode'
+    | '/api/geocode-suggest'
     | '/api/pitches'
     | '/chats_/$conversationId'
     | '/friends_/$friendId'
@@ -365,6 +377,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StadiumsRoute: typeof StadiumsRoute
   ApiGeocodeRoute: typeof ApiGeocodeRoute
+  ApiGeocodeSuggestRoute: typeof ApiGeocodeSuggestRoute
   ApiPitchesRoute: typeof ApiPitchesRoute
   ChatsConversationIdRoute: typeof ChatsConversationIdRoute
   FriendsFriendIdRoute: typeof FriendsFriendIdRoute
@@ -523,6 +536,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPitchesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/geocode-suggest': {
+      id: '/api/geocode-suggest'
+      path: '/api/geocode-suggest'
+      fullPath: '/api/geocode-suggest'
+      preLoaderRoute: typeof ApiGeocodeSuggestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/geocode': {
       id: '/api/geocode'
       path: '/api/geocode'
@@ -602,6 +622,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   StadiumsRoute: StadiumsRoute,
   ApiGeocodeRoute: ApiGeocodeRoute,
+  ApiGeocodeSuggestRoute: ApiGeocodeSuggestRoute,
   ApiPitchesRoute: ApiPitchesRoute,
   ChatsConversationIdRoute: ChatsConversationIdRoute,
   FriendsFriendIdRoute: FriendsFriendIdRoute,

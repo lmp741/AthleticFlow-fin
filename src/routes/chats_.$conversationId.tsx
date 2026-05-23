@@ -373,7 +373,7 @@ function ConversationPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
-      <header className="sticky top-16 z-30 border-b border-border bg-background/90 backdrop-blur-xl">
+      <header className="sticky-sub-header z-30 border-b border-border bg-background/90 backdrop-blur-xl">
         <div className="container mx-auto flex items-center gap-3 px-6 py-3">
           <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/chats" })}>
             <ArrowLeft className="h-4 w-4" />
