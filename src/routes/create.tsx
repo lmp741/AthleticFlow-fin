@@ -72,7 +72,12 @@ function CreateGamePage() {
   const [players, setPlayers] = useState([10]);
   const [stadiums, setStadiums] = useState<StadiumOpt[]>([]);
   const [stadiumId, setStadiumId] = useState("");
+  // Модель оплаты:
+  //   "split" — вводим общую аренду, делим на участников (price/чел = floor(rent/N))
+  //   "fixed" — вводим фикс. сумму с каждого, общая = price × N
+  const [payMode, setPayMode] = useState<"split" | "fixed">("split");
   const [rentTotal, setRentTotal] = useState("5000");
+  const [fixedPrice, setFixedPrice] = useState("500");
   const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -94,7 +99,15 @@ function CreateGamePage() {
     })();
   }, []);
 
-  const pricePerPlayer = Math.round((Number(rentTotal) || 0) / Math.max(1, players[0]));
+  // Вычисляемые поля в зависимости от модели оплаты:
+  //   split → rent есть, price = floor(rent / N), total_plan = price * N (минус остаток)
+  //   fixed → price задан, rent_total = NULL в БД, total_plan = price * N
+  const slots = Math.max(1, players[0]);
+  const rentNum = Math.max(0, Number(rentTotal) || 0);
+  const fixedNum = Math.max(0, Number(fixedPrice) || 0);
+  const pricePerPlayer =
+    payMode === "split" ? Math.floor(rentNum / slots) : fixedNum;
+  const totalPlan = pricePerPlayer * slots;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +126,9 @@ function CreateGamePage() {
         ends_at,
         slots_total: players[0],
         price_per_player: pricePerPlayer,
+        // rent_total сохраняем только в split-модели — на странице игры её используем
+        // для пересчёта при редактировании slots.
+        rent_total: payMode === "split" ? rentNum : null,
         description: description || null,
         is_private: isPrivate,
       })
@@ -324,20 +340,69 @@ function CreateGamePage() {
               </div>
 
               <Card title="Оплата" icon={Wallet}>
-                <Label>Стоимость аренды стадиона, ₽</Label>
-                <Input
-                  type="number"
-                  value={rentTotal}
-                  onChange={(e) => setRentTotal(e.target.value)}
-                  className="mt-1"
-                />
-                <div className="mt-4 rounded-2xl bg-muted p-4 text-sm">
-                  <p className="text-muted-foreground">С каждого игрока</p>
-                  <p className="font-display text-2xl font-bold">≈ {pricePerPlayer} ₽</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Split-payment: оплата делится поровну и уходит владельцу стадиона.
-                  </p>
+                {/* Toggle модели оплаты */}
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-muted/40 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setPayMode("split")}
+                    className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                      payMode === "split"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Аренда / на участников
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayMode("fixed")}
+                    className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                      payMode === "fixed"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Фикс. с каждого
+                  </button>
                 </div>
+
+                {payMode === "split" ? (
+                  <>
+                    <Label className="mt-4 block">Стоимость аренды стадиона, ₽</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={rentTotal}
+                      onChange={(e) => setRentTotal(e.target.value)}
+                      className="mt-1"
+                    />
+                    <div className="mt-4 rounded-2xl bg-muted p-4 text-sm">
+                      <p className="text-muted-foreground">С каждого игрока</p>
+                      <p className="font-display text-2xl font-bold">≈ {pricePerPlayer} ₽</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {rentNum} ₽ ÷ {slots} = {pricePerPlayer} ₽. Если игроков станет меньше — цена пересчитается.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Label className="mt-4 block">Сумма с каждого игрока, ₽</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={fixedPrice}
+                      onChange={(e) => setFixedPrice(e.target.value)}
+                      className="mt-1"
+                    />
+                    <div className="mt-4 rounded-2xl bg-muted p-4 text-sm">
+                      <p className="text-muted-foreground">Всего соберём</p>
+                      <p className="font-display text-2xl font-bold">{totalPlan} ₽</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {pricePerPlayer} ₽ × {slots} игроков. Цена с игрока зафиксирована.
+                      </p>
+                    </div>
+                  </>
+                )}
               </Card>
 
               <Button

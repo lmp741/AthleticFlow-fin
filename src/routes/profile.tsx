@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { formatRuPhone, isValidRuPhone, toE164Ru } from "@/lib/phone";
 import { PhoneVerifyDialog } from "@/components/auth/PhoneVerifyDialog";
 import { isPushSupported, getPushStatus, enablePush, disablePush, type PushStatus } from "@/lib/push";
+import { compressImage } from "@/lib/image";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({ meta: [{ title: "Профиль — Athletic Flow" }] }),
@@ -167,14 +168,22 @@ function ProfilePage() {
 
   const uploadAvatar = async (file: File) => {
     if (!user) return;
-    if (file.size > 3 * 1024 * 1024) {
-      toast.error("Файл больше 3 МБ");
+    // 15 МБ — практический потолок для iPhone-фото перед сжатием. После compressImage
+    // получим ~300-800 КБ JPEG 1024×1024 — это с запасом и для retina, и для трафика.
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("Файл больше 15 МБ");
       return;
     }
     setUploading(true);
-    const ext = file.name.split(".").pop() ?? "jpg";
+    let toUpload: File = file;
+    try {
+      toUpload = await compressImage(file, { maxDim: 1024, maxSizeMB: 1 });
+    } catch {
+      // Если сжатие сломалось — пробуем загрузить оригинал, лимит storage не пробьём.
+    }
+    const ext = (toUpload.name.split(".").pop() ?? "jpg").toLowerCase();
     const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, toUpload, { upsert: true });
     if (upErr) {
       setUploading(false);
       toast.error(upErr.message);
@@ -1290,17 +1299,27 @@ function MediaSection({ userId, isOwner }: { userId: string; isOwner?: boolean }
       toast.error("Только фото или видео");
       return;
     }
-    const maxMb = isVideo ? 50 : 8;
+    // Видео не сжимаем в браузере — потолок 50 МБ.
+    // Фото сжимаем до ~2 МБ, поэтому принимаем оригинал до 20 МБ.
+    const maxMb = isVideo ? 50 : 20;
     if (file.size > maxMb * 1024 * 1024) {
       toast.error(`Файл больше ${maxMb} МБ`);
       return;
     }
     setUploading(true);
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? (isVideo ? "mp4" : "jpg");
+    let toUpload: File = file;
+    if (isImage) {
+      try {
+        toUpload = await compressImage(file, { maxDim: 1920, maxSizeMB: 2 });
+      } catch {
+        /* upload original on compression error */
+      }
+    }
+    const ext = toUpload.name.split(".").pop()?.toLowerCase() ?? (isVideo ? "mp4" : "jpg");
     const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error: upErr } = await supabase.storage
       .from("profile-media")
-      .upload(path, file, { upsert: false, contentType: file.type });
+      .upload(path, toUpload, { upsert: false, contentType: toUpload.type });
     if (upErr) {
       setUploading(false);
       toast.error(upErr.message);

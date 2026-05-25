@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Calendar, Clock, MapPin, MessageCircle, Star, Users, ArrowLeft, Send, CreditCard, CheckCircle2, Loader2, UserPlus, Copy, ImagePlus, X, Lock, Globe, Link2, ShieldCheck, Trophy, Flame, AlertTriangle, RefreshCw, CalendarClock, Zap, Search } from "lucide-react";
+import { Calendar, Clock, MapPin, MessageCircle, Star, Users, ArrowLeft, Send, CreditCard, CheckCircle2, Loader2, UserPlus, Copy, ImagePlus, X, Lock, Globe, Link2, ShieldCheck, Trophy, Flame, AlertTriangle, RefreshCw, CalendarClock, Zap, Search, Crown, Pencil } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -55,6 +55,8 @@ interface GameDetail {
   organizer_id: string;
   is_private: boolean;
   invite_token: string | null;
+  // NULL = фиксированная цена с каждого, NOT NULL = аренда делится на slots_total.
+  rent_total: number | null;
   stadium: { id: string; name: string; address: string } | null;
 }
 
@@ -115,7 +117,7 @@ function GamePage() {
     const { data, error } = await supabase
       .from("games")
       .select(
-        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, stadium:stadiums(id,name,address)"
+        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, stadium:stadiums(id,name,address)"
       )
       .eq("id", gameId)
       .maybeSingle();
@@ -452,7 +454,16 @@ function GamePage() {
                 <Stat icon={Calendar} label="Дата" value={fmtDate(game.starts_at)} />
                 <Stat icon={Clock} label="Время" value={`${fmtTime(game.starts_at)}–${fmtTime(game.ends_at)}`} />
                 <Stat icon={Users} label="Состав" value={`${taken}/${game.slots_total}`} />
-                <Stat icon={Star} label="Собрано" value={`${paidCount * game.price_per_player} / ${game.slots_total * game.price_per_player} ₽`} />
+                <Stat
+                  icon={Star}
+                  label="Собрано"
+                  value={`${paidCount * game.price_per_player} / ${
+                    /* В split-режиме плановая сумма = аренда. В fixed = price × N. */
+                    game.rent_total != null
+                      ? game.rent_total
+                      : game.slots_total * game.price_per_player
+                  } ₽`}
+                />
               </div>
               {(isJoined || isOrganizer) && (
                 <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -475,6 +486,21 @@ function GamePage() {
                   </div>
                 </div>
               )}
+              {isOrganizer && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <EditGameButton game={game} onSaved={loadGame} />
+                  {game.is_private && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                      onClick={() => setMakePublicOpen(true)}
+                    >
+                      <Globe className="mr-1 h-3.5 w-3.5" /> Сделать общедоступной
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
@@ -485,9 +511,13 @@ function GamePage() {
               <ul className="mt-6 space-y-2">
                 {participants.map((p) => {
                   const mine = p.user_id === user?.id;
+                  const isAdmin = p.user_id === game.organizer_id;
                   const canTogglePaid = mine || isOrganizer;
                   const gameOver = new Date(game.ends_at).getTime() < Date.now();
                   const canRate = !mine && !!user && (isJoined || isOrganizer) && gameOver;
+                  // Кнопка «Написать» показывается всем участникам, кроме самого себя.
+                  // Идёт в DM (через /friends/$userId) — если не друзья, экран сам покажет CTA-предложение.
+                  const canDM = !mine && !!user;
                   const nameNode = p.profile?.username ? (
                     <Link
                       to="/u/$username"
@@ -504,18 +534,54 @@ function GamePage() {
                   return (
                     <li
                       key={p.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3"
+                      className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 ${
+                        isAdmin
+                          ? "border-amber-500/40 bg-amber-500/5"
+                          : "border-border bg-background/60"
+                      }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-brand font-display text-sm font-bold text-primary-foreground">
-                          {(p.profile?.display_name ?? p.profile?.username ?? "?").slice(0, 1).toUpperCase()}
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div className="relative shrink-0">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-brand font-display text-sm font-bold text-primary-foreground">
+                            {(p.profile?.display_name ?? p.profile?.username ?? "?").slice(0, 1).toUpperCase()}
+                          </div>
+                          {isAdmin && (
+                            <span
+                              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm"
+                              title="Организатор"
+                            >
+                              <Crown className="h-3 w-3" />
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <p>{nameNode}{mine && <span className="text-sm text-muted-foreground"> (ты)</span>}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="flex flex-wrap items-center gap-1">
+                            {nameNode}
+                            {isAdmin && (
+                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                                Админ
+                              </span>
+                            )}
+                            {mine && <span className="text-sm text-muted-foreground">(ты)</span>}
+                          </p>
                           <p className="text-xs text-muted-foreground">{p.paid ? "Оплачено" : "Не оплачено"}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {canDM && (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2.5"
+                            title="Написать"
+                          >
+                            <Link to="/friends/$friendId" params={{ friendId: p.user_id }}>
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              <span className="ml-1 hidden sm:inline">Написать</span>
+                            </Link>
+                          </Button>
+                        )}
                         {canRate && (
                           <RatePlayerButton
                             gameId={game.id}
@@ -1117,6 +1183,280 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
 }
 
 /**
+ * Редактирование игры организатором: slots, цена, время, уровень, описание, приватность.
+ *
+ * Автопересчёт: если игра создана с rent_total (модель «делим аренду»),
+ * при изменении количества игроков цена/чел пересчитывается автоматически
+ * (price = floor(rent_total / new_slots)).
+ *
+ * Если в игре есть участники с paid=true — изменение цены НЕ снимает их флаг.
+ * Это сознательное упрощение: при росте цены организатор сам разрулит доплату,
+ * при падении — никто не возражает.
+ */
+function EditGameButton({
+  game,
+  onSaved,
+}: {
+  game: GameDetail;
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Локальный state формы — обнуляем при открытии диалога.
+  const initialDate = new Date(game.starts_at);
+  const initialEnd = new Date(game.ends_at);
+  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
+  const toTimeStr = (d: Date) => d.toTimeString().slice(0, 5);
+
+  const [slots, setSlots] = useState<number>(game.slots_total);
+  const [level, setLevel] = useState<string>(game.level);
+  const [date, setDate] = useState<string>(toDateStr(initialDate));
+  const [timeStart, setTimeStart] = useState<string>(toTimeStr(initialDate));
+  const [timeEnd, setTimeEnd] = useState<string>(toTimeStr(initialEnd));
+  const [description, setDescription] = useState<string>(game.description ?? "");
+  const [isPrivate, setIsPrivate] = useState<boolean>(game.is_private);
+  // Если у игры был rent_total — это split-режим. Иначе fixed.
+  const [payMode, setPayMode] = useState<"split" | "fixed">(
+    game.rent_total != null ? "split" : "fixed",
+  );
+  const [rentTotal, setRentTotal] = useState<string>(
+    game.rent_total != null ? String(game.rent_total) : String(game.price_per_player * game.slots_total),
+  );
+  const [fixedPrice, setFixedPrice] = useState<string>(String(game.price_per_player));
+
+  // Сброс формы при каждом открытии — на случай изменения извне.
+  useEffect(() => {
+    if (!open) return;
+    setSlots(game.slots_total);
+    setLevel(game.level);
+    setDate(toDateStr(new Date(game.starts_at)));
+    setTimeStart(toTimeStr(new Date(game.starts_at)));
+    setTimeEnd(toTimeStr(new Date(game.ends_at)));
+    setDescription(game.description ?? "");
+    setIsPrivate(game.is_private);
+    setPayMode(game.rent_total != null ? "split" : "fixed");
+    setRentTotal(game.rent_total != null ? String(game.rent_total) : String(game.price_per_player * game.slots_total));
+    setFixedPrice(String(game.price_per_player));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const slotsSafe = Math.max(1, slots);
+  const rentNum = Math.max(0, Number(rentTotal) || 0);
+  const fixedNum = Math.max(0, Number(fixedPrice) || 0);
+  // Главная формула автопересчёта: в split-режиме цена/чел всегда производная от rent/N.
+  const computedPrice = payMode === "split" ? Math.floor(rentNum / slotsSafe) : fixedNum;
+  const totalPlan = computedPrice * slotsSafe;
+
+  const submit = async () => {
+    if (!date || !timeStart || !timeEnd) {
+      toast.error("Заполни дату и время");
+      return;
+    }
+    const starts = new Date(`${date}T${timeStart}:00`);
+    const ends = new Date(`${date}T${timeEnd}:00`);
+    if (Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime())) {
+      toast.error("Неверный формат даты/времени");
+      return;
+    }
+    if (ends <= starts) {
+      toast.error("Время окончания должно быть позже начала");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("games")
+      .update({
+        slots_total: slotsSafe,
+        level,
+        starts_at: starts.toISOString(),
+        ends_at: ends.toISOString(),
+        description: description.trim() || null,
+        is_private: isPrivate,
+        price_per_player: computedPrice,
+        // Сохраняем rent_total только в split-режиме; в fixed обнуляем.
+        rent_total: payMode === "split" ? rentNum : null,
+      })
+      .eq("id", game.id);
+    setSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Игра обновлена");
+    setOpen(false);
+    onSaved();
+  };
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <Pencil className="mr-1 h-3.5 w-3.5" /> Редактировать
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Редактировать игру</DialogTitle>
+            <DialogDescription>
+              Изменения увидят все участники. Цена с игрока пересчитается автоматически в режиме «делим аренду».
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Кол-во игроков */}
+            <div>
+              <Label htmlFor="edit-slots">Количество игроков</Label>
+              <Input
+                id="edit-slots"
+                type="number"
+                min={2}
+                max={50}
+                value={slots}
+                onChange={(e) => setSlots(Math.max(1, Number(e.target.value) || 1))}
+                className="mt-1 h-11"
+              />
+            </div>
+
+            {/* Уровень */}
+            <div>
+              <Label htmlFor="edit-level">Уровень</Label>
+              <select
+                id="edit-level"
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                className="mt-1 block h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {["Новичок", "Любитель", "Полупрофи", "Профи"].map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Дата / Время */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Label htmlFor="edit-date">Дата</Label>
+                <Input id="edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 h-11" />
+              </div>
+              <div>
+                <Label htmlFor="edit-tstart">Начало</Label>
+                <Input id="edit-tstart" type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className="mt-1 h-11" />
+              </div>
+              <div>
+                <Label htmlFor="edit-tend">Конец</Label>
+                <Input id="edit-tend" type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className="mt-1 h-11" />
+              </div>
+            </div>
+
+            {/* Оплата */}
+            <div>
+              <Label>Оплата</Label>
+              <div className="mt-1 grid grid-cols-2 gap-2 rounded-xl border border-border bg-muted/40 p-1">
+                <button
+                  type="button"
+                  onClick={() => setPayMode("split")}
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    payMode === "split"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Аренда / N
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayMode("fixed")}
+                  className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                    payMode === "fixed"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Фикс. с каждого
+                </button>
+              </div>
+              {payMode === "split" ? (
+                <div className="mt-2">
+                  <Label htmlFor="edit-rent" className="text-xs">Стоимость аренды, ₽</Label>
+                  <Input
+                    id="edit-rent"
+                    type="number"
+                    min={0}
+                    value={rentTotal}
+                    onChange={(e) => setRentTotal(e.target.value)}
+                    className="mt-1 h-11"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {rentNum} ₽ ÷ {slotsSafe} = <b>{computedPrice} ₽</b> с игрока (пересчитается при изменении кол-ва)
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <Label htmlFor="edit-fixed" className="text-xs">Сумма с каждого, ₽</Label>
+                  <Input
+                    id="edit-fixed"
+                    type="number"
+                    min={0}
+                    value={fixedPrice}
+                    onChange={(e) => setFixedPrice(e.target.value)}
+                    className="mt-1 h-11"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Всего соберём: <b>{totalPlan} ₽</b> ({computedPrice} ₽ × {slotsSafe})
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Описание */}
+            <div>
+              <Label htmlFor="edit-desc">Описание (необязательно)</Label>
+              <Input
+                id="edit-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 500))}
+                placeholder="Условия, экипировка и т.д."
+                className="mt-1 h-11"
+                maxLength={500}
+              />
+            </div>
+
+            {/* Приватность */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(e) => setIsPrivate(e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <div className="text-sm">
+                <p className="font-medium">Приватная игра</p>
+                <p className="text-xs text-muted-foreground">
+                  Не отображается в общем каталоге. Можно пригласить по ссылке, друзьями или поиском по нику.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
+              Отмена
+            </Button>
+            <Button
+              onClick={submit}
+              disabled={saving}
+              className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Сохранить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/**
  * Кнопка «Срочная замена» — рассылает уведомление игрокам, которые играли
  * на этом стадионе в том же спорте за последние 60 дней.
  * Антиспам — 1 раз в час на игру (контролит RPC).
@@ -1445,15 +1785,35 @@ function InviteFriendButton({
       return;
     }
     setBusy(true);
-    const { data: prof, error } = await supabase
+    // 1) Точное совпадение (регистронезависимое). Главный кейс.
+    let prof: { id: string; display_name: string | null; username: string | null } | null = null;
+    const { data: exact, error: exactErr } = await supabase
       .from("profiles")
       .select("id, display_name, username")
       .ilike("username", handle)
       .maybeSingle();
-    if (error) {
+    if (exactErr) {
       setBusy(false);
-      toast.error(error.message);
+      toast.error(exactErr.message);
       return;
+    }
+    if (exact) {
+      prof = exact;
+    } else {
+      // 2) Fallback: префиксный поиск, ровно один результат → пригласим его.
+      //    Если несколько совпадений — просим уточнить, чтобы не пригласить не того.
+      const { data: prefix } = await supabase
+        .from("profiles")
+        .select("id, display_name, username")
+        .ilike("username", `${handle}%`)
+        .limit(2);
+      if (prefix && prefix.length === 1) {
+        prof = prefix[0];
+      } else if (prefix && prefix.length > 1) {
+        setBusy(false);
+        toast.error("Несколько игроков с похожим ником. Уточни никнейм полностью.");
+        return;
+      }
     }
     if (!prof) {
       setBusy(false);

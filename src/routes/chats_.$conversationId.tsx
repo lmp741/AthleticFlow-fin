@@ -23,6 +23,7 @@ import { SiteHeader } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { compressImage } from "@/lib/image";
 import {
   Dialog,
   DialogContent,
@@ -246,33 +247,50 @@ function ConversationPage() {
       return;
     }
     setSending(true);
-    const { error } = await supabase.from("conversation_messages").insert(payload);
+    // .select() — добавим сообщение локально, не дожидаясь realtime broadcast.
+    const { data: inserted, error } = await supabase
+      .from("conversation_messages")
+      .insert(payload)
+      .select()
+      .single();
     setSending(false);
     if (error) {
       toast.error(error.message);
       return;
+    }
+    if (inserted) {
+      const newRow = inserted as ConvMsg;
+      setMessages((prev) => (prev.some((x) => x.id === newRow.id) ? prev : [...prev, newRow]));
     }
     if (!extra) setBody("");
   };
 
   const uploadAndSend = async (file: File, kind: "image" | "video" | "document") => {
     if (!myId) return;
-    const limits = { image: 8, video: 50, document: 20 };
+    const limits = { image: 20, video: 50, document: 20 };
     const maxMb = limits[kind];
     if (file.size > maxMb * 1024 * 1024) {
       toast.error(`Файл больше ${maxMb} МБ`);
       return;
     }
     setUploading(kind);
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
-    const safe = file.name.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+    let toUpload: File = file;
+    if (kind === "image") {
+      try {
+        toUpload = await compressImage(file, { maxDim: 1920, maxSizeMB: 2 });
+      } catch {
+        /* upload original on compression error */
+      }
+    }
+    const ext = toUpload.name.split(".").pop()?.toLowerCase() ?? "bin";
+    const safe = toUpload.name.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
     const path = `${myId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe || `file.${ext}`}`;
     const { error: upErr } = await supabase.storage
       .from("dm-media")
-      .upload(path, file, { upsert: false, contentType: file.type });
+      .upload(path, toUpload, { upsert: false, contentType: toUpload.type });
     if (upErr) {
       setUploading(null);
-      toast.error(upErr.message);
+      toast.error(`Не удалось загрузить файл: ${upErr.message}`);
       return;
     }
     const { data: pub } = supabase.storage.from("dm-media").getPublicUrl(path);

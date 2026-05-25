@@ -18,6 +18,7 @@ import { useCall } from "@/components/calls/CallProvider";
 import { SiteHeader } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { compressImage } from "@/lib/image";
 import { Textarea } from "@/components/ui/textarea";
 
 function wrapToWidth(s: string, width = 54): string {
@@ -227,33 +228,55 @@ function ChatPage() {
       return;
     }
     setSending(true);
-    const { error } = await supabase.from("direct_messages").insert(payload);
+    // .select() возвращает вставленную строку — добавляем её в state сразу,
+    // не дожидаясь broadcast от realtime. Это закрывает баг «не вижу пока не обновлю»,
+    // даже если realtime-канал отвалился из-за гонки при пересоздании.
+    const { data: inserted, error } = await supabase
+      .from("direct_messages")
+      .insert(payload)
+      .select()
+      .single();
     setSending(false);
     if (error) {
       toast.error(error.message);
       return;
+    }
+    if (inserted) {
+      const newRow = inserted as DM;
+      setMessages((prev) => (prev.some((x) => x.id === newRow.id) ? prev : [...prev, newRow]));
     }
     if (!extra) setBody("");
   };
 
   const uploadAndSend = async (file: File, kind: "image" | "video" | "document") => {
     if (!myId) return;
-    const limits = { image: 8, video: 50, document: 20 };
+    // Видео не сжимаем в браузере, document любого типа — тоже. Фото пропускаем
+    // через compressImage, поэтому принимаем оригинал крупнее (resize выровняет).
+    const limits = { image: 20, video: 50, document: 20 };
     const maxMb = limits[kind];
     if (file.size > maxMb * 1024 * 1024) {
       toast.error(`Файл больше ${maxMb} МБ`);
       return;
     }
     setUploading(kind);
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
-    const safe = file.name.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+    let toUpload: File = file;
+    if (kind === "image") {
+      try {
+        toUpload = await compressImage(file, { maxDim: 1920, maxSizeMB: 2 });
+      } catch {
+        /* загружаем оригинал, если сжатие сломалось */
+      }
+    }
+    const ext = toUpload.name.split(".").pop()?.toLowerCase() ?? "bin";
+    const safe = toUpload.name.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
     const path = `${myId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe || `file.${ext}`}`;
     const { error: upErr } = await supabase.storage
       .from("dm-media")
-      .upload(path, file, { upsert: false, contentType: file.type });
+      .upload(path, toUpload, { upsert: false, contentType: toUpload.type });
     if (upErr) {
       setUploading(null);
-      toast.error(upErr.message);
+      // Реальная причина — обычно RLS на bucket. Текст ошибки выводим, чтоб Misha видел.
+      toast.error(`Не удалось загрузить файл: ${upErr.message}`);
       return;
     }
     const { data: pub } = supabase.storage.from("dm-media").getPublicUrl(path);

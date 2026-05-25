@@ -385,7 +385,19 @@ function GamesPage() {
         }
         if (sport !== "Все" && g.sport !== sport) return false;
         if (level !== "Любой" && g.level !== level) return false;
-        if (q && !(g.stadium?.name ?? "").toLowerCase().includes(q.toLowerCase())) return false;
+        if (q) {
+          // Поиск ищет одновременно в названии стадиона, адресе и виде спорта.
+          // Раньше совпадал только по name — поэтому набор «Тверская» ничего не давал,
+          // хотя адреса с этим словом есть.
+          const haystack = [
+            g.stadium?.name ?? "",
+            g.stadium?.address ?? "",
+            g.sport,
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(q.toLowerCase())) return false;
+        }
         return true;
       })
       .sort((a, b) => a.dist - b.dist);
