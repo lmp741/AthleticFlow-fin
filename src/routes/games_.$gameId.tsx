@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Calendar, Clock, MapPin, MessageCircle, Star, Users, ArrowLeft, Send, CreditCard, CheckCircle2, Loader2, UserPlus, Copy, ImagePlus, X, Lock, Globe, Link2, ShieldCheck, Trophy, Flame, AlertTriangle, RefreshCw, CalendarClock, Zap, Search, Crown, Pencil } from "lucide-react";
+import { compressImage } from "@/lib/image";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1007,8 +1008,8 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
       toast.error("Только изображения");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Файл слишком большой (макс. 5 МБ)");
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Файл слишком большой (макс. 20 МБ)");
       return;
     }
     setImageFile(file);
@@ -1030,13 +1031,23 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
     let image_url: string | null = null;
     try {
       if (imageFile) {
-        const ext = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
+        // Сжимаем фото на клиенте — экономим storage и трафик.
+        // Если compress упал в Safari — fallback на оригинал.
+        let toUpload: File = imageFile;
+        try {
+          toUpload = await compressImage(imageFile, { maxDim: 1920, maxSizeMB: 2 });
+        } catch (compErr) {
+          console.error("[game-chat] compress failed, uploading original", compErr);
+        }
+        const ext = toUpload.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${gameId}/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from("chat-images")
-          .upload(path, imageFile, { contentType: imageFile.type, upsert: false });
+          .upload(path, toUpload, { contentType: toUpload.type, upsert: false });
         if (upErr) {
-          toast.error(upErr.message);
+          // Показываем настоящую причину — раньше «не загружается» было тихо.
+          console.error("[game-chat] upload failed", upErr);
+          toast.error(`Не удалось загрузить фото: ${upErr.message}`);
           setUploading(false);
           return;
         }
@@ -1049,11 +1060,15 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
         image_url,
       });
       if (error) {
+        console.error("[game-chat] insert failed", error);
         toast.error(error.message);
       } else {
         setText("");
         clearImage();
       }
+    } catch (e) {
+      console.error("[game-chat] send crashed", e);
+      toast.error("Не удалось отправить сообщение");
     } finally {
       setUploading(false);
     }
@@ -1109,6 +1124,14 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
                     {m.body}
                   </p>
                 )}
+                <p
+                  className={`mt-1 text-right text-[10px] ${mine ? "opacity-70" : "text-muted-foreground"}`}
+                >
+                  {new Date(m.created_at).toLocaleTimeString("ru-RU", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
               </div>
               {mine && (
                 <Avatar className="h-8 w-8 shrink-0">
@@ -1332,19 +1355,21 @@ function EditGameButton({
               </select>
             </div>
 
-            {/* Дата / Время */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* Дата / Время — на мобиле дата на всю ширину, время на пол. */}
+            <div className="space-y-2">
               <div>
                 <Label htmlFor="edit-date">Дата</Label>
-                <Input id="edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 h-11" />
+                <Input id="edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 h-11 w-full" />
               </div>
-              <div>
-                <Label htmlFor="edit-tstart">Начало</Label>
-                <Input id="edit-tstart" type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className="mt-1 h-11" />
-              </div>
-              <div>
-                <Label htmlFor="edit-tend">Конец</Label>
-                <Input id="edit-tend" type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className="mt-1 h-11" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="edit-tstart">Начало</Label>
+                  <Input id="edit-tstart" type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className="mt-1 h-11 w-full" />
+                </div>
+                <div>
+                  <Label htmlFor="edit-tend">Конец</Label>
+                  <Input id="edit-tend" type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className="mt-1 h-11 w-full" />
+                </div>
               </div>
             </div>
 

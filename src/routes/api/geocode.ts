@@ -92,77 +92,95 @@ export const Route = createFileRoute("/api/geocode")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const u = new URL(request.url);
-        const raw = u.searchParams.get("q") ?? "";
-        const q = normalizeQuery(raw);
-        if (q.length < 2 || q.length > 200) {
-          return new Response(JSON.stringify({ error: "bad query" }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
+        // Глобальный try/catch чтобы 500 никогда не вылетал без объяснений.
+        // Любая ошибка (Supabase / Yandex / network) → возвращаем JSON с причиной.
+        try {
+          const u = new URL(request.url);
+          const raw = u.searchParams.get("q") ?? "";
+          const q = normalizeQuery(raw);
+          if (q.length < 2 || q.length > 200) {
+            return new Response(JSON.stringify({ error: "bad query" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
 
-        const supa = getSupabaseAdmin();
+          const supa = getSupabaseAdmin();
 
-        // 1) Cache lookup
-        if (supa) {
-          const { data } = await supa
-            .from("geocode_cache")
-            .select("lat, lng, label")
-            .eq("query_norm", q)
-            .maybeSingle();
-          if (data) {
-            return new Response(
-              JSON.stringify({ lat: data.lat, lng: data.lng, label: data.label ?? raw, cached: true }),
-              {
-                status: 200,
-                headers: {
-                  "Content-Type": "application/json",
-                  "Cache-Control": "public, max-age=86400",
+          // 1) Cache lookup — обёрнут в try, чтобы упавший supabase не валил весь handler.
+          if (supa) {
+            try {
+              const { data, error } = await supa
+                .from("geocode_cache")
+                .select("lat, lng, label")
+                .eq("query_norm", q)
+                .maybeSingle();
+              if (error) {
+                console.error("[geocode] cache read failed", error.message);
+              } else if (data) {
+                return new Response(
+                  JSON.stringify({ lat: data.lat, lng: data.lng, label: data.label ?? raw, cached: true }),
+                  {
+                    status: 200,
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Cache-Control": "public, max-age=86400",
+                    },
+                  },
+                );
+              }
+            } catch (e) {
+              console.error("[geocode] cache read exception", e);
+            }
+          }
+
+          // 2) Ask Yandex
+          const hit = await askYandex(q);
+          if (!hit) {
+            return new Response(JSON.stringify({ error: "not found" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
+          // 3) Save to cache
+          if (supa) {
+            try {
+              await supa.from("geocode_cache").upsert(
+                {
+                  query_norm: q,
+                  lat: hit.lat,
+                  lng: hit.lng,
+                  label: hit.label,
+                  provider: "yandex",
+                  updated_at: new Date().toISOString(),
                 },
-              },
-            );
+                { onConflict: "query_norm" },
+              );
+            } catch (err) {
+              console.error("[geocode] cache write failed", err);
+            }
           }
-        }
 
-        // 2) Ask Yandex
-        const hit = await askYandex(q);
-        if (!hit) {
-          return new Response(JSON.stringify({ error: "not found" }), {
-            status: 404,
+          return new Response(
+            JSON.stringify({ lat: hit.lat, lng: hit.lng, label: hit.label, cached: false }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control": "public, max-age=86400",
+              },
+            },
+          );
+        } catch (err) {
+          // Возвращаем причину в теле — увидишь её в Network → Response, а не «500» в пустоту.
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[geocode] unhandled", msg);
+          return new Response(JSON.stringify({ error: "handler crashed", detail: msg }), {
+            status: 500,
             headers: { "Content-Type": "application/json" },
           });
         }
-
-        // 3) Save to cache
-        if (supa) {
-          try {
-            await supa.from("geocode_cache").upsert(
-              {
-                query_norm: q,
-                lat: hit.lat,
-                lng: hit.lng,
-                label: hit.label,
-                provider: "yandex",
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "query_norm" },
-            );
-          } catch (err) {
-            console.error("[geocode] cache write failed", err);
-          }
-        }
-
-        return new Response(
-          JSON.stringify({ lat: hit.lat, lng: hit.lng, label: hit.label, cached: false }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control": "public, max-age=86400",
-            },
-          },
-        );
       },
     },
   },

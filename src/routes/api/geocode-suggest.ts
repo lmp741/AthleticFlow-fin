@@ -100,67 +100,81 @@ export const Route = createFileRoute("/api/geocode-suggest")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const u = new URL(request.url);
-        const raw = u.searchParams.get("q") ?? "";
-        const q = normalizeQuery(raw);
-        // < 3 символов — не дергаем платный API. Без этого autocomplete на каждом
-        // нажатии «съел» бы суточный лимит за пару часов на 10 пользователях.
-        if (q.length < 3 || q.length > 200) {
-          return new Response(JSON.stringify({ items: [] }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control": "public, max-age=60",
-            },
-          });
-        }
-
-        const supa = getSupabaseAdmin();
-
-        // 1) Cache lookup
-        if (supa) {
-          const { data } = await supa
-            .from("geocode_suggest_cache")
-            .select("items")
-            .eq("query_norm", q)
-            .maybeSingle();
-          if (data?.items) {
-            return new Response(JSON.stringify({ items: data.items, cached: true }), {
+        try {
+          const u = new URL(request.url);
+          const raw = u.searchParams.get("q") ?? "";
+          const q = normalizeQuery(raw);
+          if (q.length < 3 || q.length > 200) {
+            return new Response(JSON.stringify({ items: [] }), {
               status: 200,
               headers: {
                 "Content-Type": "application/json",
-                "Cache-Control": "public, max-age=86400",
+                "Cache-Control": "public, max-age=60",
               },
             });
           }
-        }
 
-        // 2) Ask Yandex
-        const items = await askYandex(q);
+          const supa = getSupabaseAdmin();
 
-        // 3) Save to cache (даже если пусто — чтобы не дергать повторно тот же бессмысленный q).
-        if (supa) {
-          try {
-            await supa.from("geocode_suggest_cache").upsert(
-              {
-                query_norm: q,
-                items,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "query_norm" },
-            );
-          } catch (err) {
-            console.error("[geocode-suggest] cache write failed", err);
+          // 1) Cache lookup. Если таблицы нет / RLS блокирует / ключ невалиден —
+          //    не валим handler, просто идём в Yandex.
+          if (supa) {
+            try {
+              const { data, error } = await supa
+                .from("geocode_suggest_cache")
+                .select("items")
+                .eq("query_norm", q)
+                .maybeSingle();
+              if (error) {
+                console.error("[geocode-suggest] cache read failed", error.message);
+              } else if (data?.items) {
+                return new Response(JSON.stringify({ items: data.items, cached: true }), {
+                  status: 200,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Cache-Control": "public, max-age=86400",
+                  },
+                });
+              }
+            } catch (e) {
+              console.error("[geocode-suggest] cache read exception", e);
+            }
           }
-        }
 
-        return new Response(JSON.stringify({ items, cached: false }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "public, max-age=86400",
-          },
-        });
+          // 2) Ask Yandex
+          const items = await askYandex(q);
+
+          // 3) Save to cache (даже если пусто — чтобы не дергать повторно тот же бессмысленный q).
+          if (supa) {
+            try {
+              await supa.from("geocode_suggest_cache").upsert(
+                {
+                  query_norm: q,
+                  items,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "query_norm" },
+              );
+            } catch (err) {
+              console.error("[geocode-suggest] cache write failed", err);
+            }
+          }
+
+          return new Response(JSON.stringify({ items, cached: false }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "public, max-age=86400",
+            },
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[geocode-suggest] unhandled", msg);
+          return new Response(JSON.stringify({ error: "handler crashed", detail: msg }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       },
     },
   },
