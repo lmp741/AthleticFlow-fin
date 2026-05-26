@@ -30,13 +30,15 @@ export async function compressImage(file: File, opts: CompressOptions = {}): Pro
   const { maxDim = 1920, maxSizeMB = 2, mime = "image/jpeg" } = opts;
   const targetBytes = maxSizeMB * 1024 * 1024;
 
-  // Быстрый путь: если файл уже в норме И не требует ресайза — возвращаем как есть.
-  // Resize всё равно сделаем если картинка больше maxDim — без декодирования размер не узнать,
-  // поэтому декодируем всегда, но для маленьких файлов на больших экранах сохраняем оригинал.
+  // Быстрый путь: если файл уже в норме И не требует ресайза И уже в нужном формате —
+  // возвращаем как есть. JPEG-фото с iPhone обычно ок. WebP/PNG всегда конвертируем
+  // в JPEG, потому что Supabase Storage и некоторые ImageMagick-обработчики
+  // вне облака могут отказывать на webp с непредсказуемой длительной обработкой.
   const img = await loadImage(file);
   const { width, height } = scaleToFit(img.naturalWidth, img.naturalHeight, maxDim);
   const noResize = width === img.naturalWidth && height === img.naturalHeight;
-  if (noResize && file.size <= targetBytes) {
+  const formatOk = file.type === mime;
+  if (noResize && file.size <= targetBytes && formatOk) {
     URL.revokeObjectURL(img.src);
     return file;
   }
@@ -59,9 +61,16 @@ export async function compressImage(file: File, opts: CompressOptions = {}): Pro
     quality *= 0.7;
     blob = await canvasToBlob(canvas, mime, quality);
   }
-  if (!blob) return file;
+  // Safari иногда возвращает null для toBlob с image/webp. Fallback на JPEG.
+  if (!blob && mime !== "image/jpeg") {
+    blob = await canvasToBlob(canvas, "image/jpeg", 0.85);
+  }
+  if (!blob) {
+    console.warn("[compressImage] canvas.toBlob returned null, using original");
+    return file;
+  }
 
-  const newName = file.name.replace(/\.[a-z0-9]+$/i, "") + (mime === "image/webp" ? ".webp" : ".jpg");
+  const newName = file.name.replace(/\.[a-z0-9]+$/i, "") + (blob.type === "image/webp" ? ".webp" : ".jpg");
   return new File([blob], newName, { type: blob.type, lastModified: Date.now() });
 }
 

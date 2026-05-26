@@ -89,8 +89,12 @@ async function geocodeMoscow(
   ];
   for (const q of queries) {
     try {
+      // Accept: text/html — обходим SSR-pipeline TanStack Start, который реджектит
+      // запросы с чистым application/json как "Only HTML requests are supported here".
+      // Сам handler возвращает Content-Type: application/json в Response, поэтому это
+      // безопасно — мы просто проходим валидацию на входе.
       const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, {
-        headers: { Accept: "application/json" },
+        headers: { Accept: "text/html, application/json" },
         signal,
       });
       if (!r.ok) continue;
@@ -121,8 +125,10 @@ async function suggestMoscow(text: string, signal?: AbortSignal): Promise<Sugges
   const looksLikeMoscow = /москв|moscow/i.test(t);
   const q = looksLikeMoscow ? t : `Москва, ${t}`;
   try {
+    // Accept: text/html — TanStack Start SSR-pipeline отвергает чистый application/json
+    // с ошибкой "Only HTML requests are supported here". Хак, но рабочий.
     const r = await fetch(`/api/geocode-suggest?q=${encodeURIComponent(q)}`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "text/html, application/json" },
       signal,
     });
     if (!r.ok) return [];
@@ -342,7 +348,8 @@ function GamesPage() {
       try {
         const res = await fetch(
           `/api/pitches?lat=${loc.lat}&lng=${loc.lng}&radius=${r}`,
-          { signal: ctrl.signal, headers: { Accept: "application/json" } },
+          // Accept: text/html — обходим SSR-pipeline TanStack Start, см. suggestMoscow.
+          { signal: ctrl.signal, headers: { Accept: "text/html, application/json" } },
         );
         if (!res.ok) {
           setOsmSpots([]);
