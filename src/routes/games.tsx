@@ -504,7 +504,14 @@ function GamesPage() {
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
-      <section className="relative overflow-hidden bg-gradient-hero py-10 md:py-14">
+      {/*
+        ВАЖНО: overflow-hidden на этой секции убран сознательно.
+        Иначе выпадающий список подсказок адреса (ManualLocationBar) обрезается
+        нижней границей секции и проваливается под следующий блок.
+        Градиент через absolute inset-0 ограничен размерами родителя, поэтому
+        визуально ничего не вылезает.
+      */}
+      <section className="relative bg-gradient-hero py-10 md:py-14">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,white,transparent_50%)] opacity-15" />
         <div className="relative container mx-auto px-4 sm:px-6">
           <Badge className="mb-3 border-white/30 bg-white/10 text-white">
@@ -890,7 +897,7 @@ function ManualLocationBar({
             className="h-10 border-white/30 bg-white/10 text-white placeholder:text-white/60"
           />
           {focused && query.trim().length >= 3 && (suggestLoading || suggestions.length > 0) && (
-            <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-xl border border-border bg-popover text-foreground shadow-elegant">
+            <div className="absolute left-0 right-0 top-11 z-50 overflow-hidden rounded-xl border border-border bg-popover text-foreground shadow-elegant">
               {suggestLoading && suggestions.length === 0 && (
                 <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Ищу варианты…
