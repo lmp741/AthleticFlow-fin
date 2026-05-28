@@ -61,7 +61,24 @@ interface GameDetail {
   invite_token: string | null;
   // NULL = фиксированная цена с каждого, NOT NULL = аренда делится на slots_total.
   rent_total: number | null;
+  // Финализирована и заархивирована — игра только для просмотра, без чата и записи.
+  archived_at: string | null;
   stadium: { id: string; name: string; address: string } | null;
+}
+
+interface GameResult {
+  score_team_a: number;
+  score_team_b: number;
+  finalized_at: string;
+  notes: string | null;
+}
+
+interface PlayerStat {
+  user_id: string;
+  team: "A" | "B" | null;
+  goals: number;
+  assists: number;
+  is_mvp: boolean;
 }
 
 interface Participant {
@@ -102,6 +119,9 @@ function GamePage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  // Результат финализированной игры — null если ещё не заархивирована.
+  const [result, setResult] = useState<GameResult | null>(null);
+  const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
   // Доступ через invite — карточка видна, но без чата/деталей участников.
   const [viaInvite, setViaInvite] = useState(false);
   const [organizer, setOrganizer] = useState<{
@@ -121,7 +141,7 @@ function GamePage() {
     const { data, error } = await supabase
       .from("games")
       .select(
-        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, stadium:stadiums(id,name,address)"
+        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, archived_at, stadium:stadiums(id,name,address)"
       )
       .eq("id", gameId)
       .maybeSingle();
@@ -234,9 +254,28 @@ function GamePage() {
     );
   };
 
+  // Загружаем итог игры (счёт + статистика) — только если игра уже архивная.
+  // Раздельный select чтобы не нагружать запрос для всех остальных игр.
+  const loadResult = async () => {
+    const [{ data: res }, { data: stats }] = await Promise.all([
+      supabase
+        .from("game_results")
+        .select("score_team_a, score_team_b, finalized_at, notes")
+        .eq("game_id", gameId)
+        .maybeSingle(),
+      supabase
+        .from("game_player_stats")
+        .select("user_id, team, goals, assists, is_mvp")
+        .eq("game_id", gameId),
+    ]);
+    setResult(res as GameResult | null);
+    setPlayerStats((stats ?? []) as PlayerStat[]);
+  };
+
   useEffect(() => {
     loadGame();
     loadParticipants();
+    loadResult();
     const ch = supabase
       .channel(`game-${gameId}-participants`)
       .on(
@@ -260,6 +299,11 @@ function GamePage() {
   const myEntry = participants.find((p) => p.user_id === user?.id) ?? null;
   const myPaid = !!myEntry?.paid;
   const taken = participants.length;
+  // Игра завершена и зафиксирована → блокируем все мутации, показываем summary.
+  const isArchived = !!game?.archived_at;
+  // Игра физически закончилась по времени, но ещё не финализирована — показываем
+  // организатору кнопку «Подвести итог».
+  const gameOverNotArchived = !!game && new Date(game.ends_at).getTime() < Date.now() && !isArchived;
   const paidCount = participants.filter((p) => p.paid).length;
   const full = !!game && taken >= game.slots_total;
   const pct = game ? Math.round((taken / game.slots_total) * 100) : 0;
@@ -322,6 +366,10 @@ function GamePage() {
       return;
     }
     if (!game) return;
+    if (game.archived_at) {
+      toast.error("Игра завершена, запись невозможна");
+      return;
+    }
     setJoining(true);
     // .select().single() — забираем вставленную строку и сразу кладём в локальный state.
     // Иначе игрок появлялся в списке только после reload (realtime может опоздать).
@@ -480,6 +528,14 @@ function GamePage() {
                 </div>
               </div>
             )}
+            {isArchived && result && (
+              <GameResultSummary
+                result={result}
+                stats={playerStats}
+                participants={participants}
+              />
+            )}
+
             <div className="rounded-3xl border border-border bg-card p-4 shadow-elegant sm:p-6">
               <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
                 <Stat icon={Calendar} label="Дата" value={fmtDate(game.starts_at)} />
@@ -496,7 +552,7 @@ function GamePage() {
                   } ₽`}
                 />
               </div>
-              {(isJoined || isOrganizer) && (
+              {(isJoined || isOrganizer) && !isArchived && (
                 <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <p className="text-sm text-muted-foreground">
                     Не хватает игроков? Пригласи друга по никнейму.
@@ -517,7 +573,7 @@ function GamePage() {
                   </div>
                 </div>
               )}
-              {isOrganizer && (
+              {isOrganizer && !isArchived && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <EditGameButton game={game} onSaved={loadGame} />
                   {game.is_private && (
@@ -529,6 +585,16 @@ function GamePage() {
                     >
                       <Globe className="mr-1 h-3.5 w-3.5" /> Сделать общедоступной
                     </Button>
+                  )}
+                  {gameOverNotArchived && (
+                    <FinalizeGameButton
+                      gameId={game.id}
+                      participants={participants}
+                      onFinalized={() => {
+                        loadGame();
+                        loadResult();
+                      }}
+                    />
                   )}
                 </div>
               )}
@@ -739,7 +805,7 @@ function GamePage() {
               />
             )}
 
-            {(isJoined || isOrganizer) && <GameChat gameId={game.id} userId={user!.id} />}
+            {(isJoined || isOrganizer) && !isArchived && <GameChat gameId={game.id} userId={user!.id} />}
           </div>
 
           <aside className="space-y-4">
@@ -751,7 +817,11 @@ function GamePage() {
               <p className="mt-2 text-sm text-muted-foreground">
                 Сумма делится между участниками. Оплата уходит владельцу стадиона.
               </p>
-              {!user ? (
+              {isArchived ? (
+                <div className="mt-6 rounded-md bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
+                  <Trophy className="mr-1 inline h-4 w-4 text-amber-500" /> Игра завершена
+                </div>
+              ) : !user ? (
                 <Button asChild size="lg" className="mt-6 w-full bg-gradient-brand text-primary-foreground hover:opacity-90">
                   <Link to="/auth">Войти и записаться</Link>
                 </Button>
@@ -788,9 +858,11 @@ function GamePage() {
                   {full ? "Мест нет" : "Записаться"}
                 </Button>
               )}
-              <p className="mt-3 text-center text-xs text-muted-foreground">
-                Безопасная сделка · Возврат при отмене
-              </p>
+              {!isArchived && (
+                <p className="mt-3 text-center text-xs text-muted-foreground">
+                  Безопасная сделка · Возврат при отмене
+                </p>
+              )}
             </div>
 
             {/* Блок «Гарантии» убран — Misha счёл его юзлесс декорацией.
@@ -805,7 +877,8 @@ function GamePage() {
         />
       </section>
 
-      {/* Mobile sticky action bar */}
+      {/* Mobile sticky action bar — скрыт на архивных играх (нечего платить/записываться). */}
+      {!isArchived && (
       <div className="sticky bottom-0 z-30 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-xl shadow-elegant lg:hidden">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -851,6 +924,7 @@ function GamePage() {
           )}
         </div>
       </div>
+      )}
 
       <Dialog open={makePublicOpen} onOpenChange={setMakePublicOpen}>
         <DialogContent className="sm:max-w-md">
@@ -1537,6 +1611,377 @@ function EditGameButton({
  * на этом стадионе в том же спорте за последние 60 дней.
  * Антиспам — 1 раз в час на игру (контролит RPC).
  */
+/**
+ * Summary финализированной игры: счёт, MVP, состав по командам с голами и передачами.
+ * Показывается на странице архивной игры вместо обычных CTA.
+ */
+function GameResultSummary({
+  result,
+  stats,
+  participants,
+}: {
+  result: GameResult;
+  stats: PlayerStat[];
+  participants: Participant[];
+}) {
+  const profileOf = (uid: string) => participants.find((p) => p.user_id === uid)?.profile ?? null;
+  const labelOf = (uid: string) => {
+    const p = profileOf(uid);
+    return p?.display_name ?? (p?.username ? `@${p.username}` : "Игрок");
+  };
+  const teamA = stats.filter((s) => s.team === "A");
+  const teamB = stats.filter((s) => s.team === "B");
+  const unassigned = stats.filter((s) => !s.team);
+  const mvp = stats.find((s) => s.is_mvp);
+
+  return (
+    <div className="rounded-3xl border border-amber-500/40 bg-gradient-to-br from-amber-500/5 via-card to-card p-6 shadow-elegant">
+      <div className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">
+        <Trophy className="h-4 w-4" /> Игра завершена
+      </div>
+      <div className="mt-4 flex items-baseline justify-center gap-4">
+        <span className="font-display text-5xl font-bold tabular-nums">{result.score_team_a}</span>
+        <span className="font-display text-3xl font-bold text-muted-foreground">:</span>
+        <span className="font-display text-5xl font-bold tabular-nums">{result.score_team_b}</span>
+      </div>
+      {mvp && (
+        <p className="mt-4 text-center text-sm">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-700 dark:text-amber-300">
+            <Star className="h-3.5 w-3.5 fill-current" /> MVP · {labelOf(mvp.user_id)}
+          </span>
+        </p>
+      )}
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <ResultTeam label="Команда A" players={teamA} labelOf={labelOf} />
+        <ResultTeam label="Команда B" players={teamB} labelOf={labelOf} />
+      </div>
+      {unassigned.length > 0 && (
+        <div className="mt-4">
+          <ResultTeam label="Без команды" players={unassigned} labelOf={labelOf} />
+        </div>
+      )}
+
+      {result.notes && (
+        <p className="mt-4 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-muted-foreground">
+          «{result.notes}»
+        </p>
+      )}
+      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+        Зафиксировано {new Date(result.finalized_at).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}
+      </p>
+    </div>
+  );
+}
+
+function ResultTeam({
+  label,
+  players,
+  labelOf,
+}: {
+  label: string;
+  players: PlayerStat[];
+  labelOf: (uid: string) => string;
+}) {
+  if (players.length === 0) return null;
+  return (
+    <div className="rounded-2xl border border-border bg-background/40 p-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <ul className="space-y-1">
+        {players.map((s) => (
+          <li key={s.user_id} className="flex items-center justify-between gap-2 text-sm">
+            <span className="flex items-center gap-1 truncate">
+              {s.is_mvp && <Star className="h-3 w-3 shrink-0 fill-amber-500 text-amber-500" />}
+              <span className="truncate">{labelOf(s.user_id)}</span>
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {s.goals > 0 && <span className="font-mono">⚽{s.goals}</span>}
+              {s.goals > 0 && s.assists > 0 && <span className="mx-1">·</span>}
+              {s.assists > 0 && <span className="font-mono">🅰{s.assists}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Кнопка «Подвести итог» — открывает диалог в котором организатор:
+ *   1. Делит игроков на команды A / B (или оставляет без команды).
+ *   2. Вводит счёт A:B.
+ *   3. Каждому игроку проставляет голы и передачи.
+ *   4. Выбирает одного MVP.
+ *   5. Сохраняет — RPC finalize_game архивирует игру и шлёт уведомления.
+ */
+function FinalizeGameButton({
+  gameId,
+  participants,
+  onFinalized,
+}: {
+  gameId: string;
+  participants: Participant[];
+  onFinalized: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
+  const [notes, setNotes] = useState("");
+  // Локальная статистика по каждому игроку. Ключ — user_id.
+  const [perPlayer, setPerPlayer] = useState<
+    Record<string, { team: "A" | "B" | null; goals: number; assists: number; is_mvp: boolean }>
+  >({});
+
+  // При открытии диалога — инициализируем дефолтные значения для каждого участника.
+  useEffect(() => {
+    if (!open) return;
+    const init: typeof perPlayer = {};
+    participants.forEach((p) => {
+      init[p.user_id] = { team: null, goals: 0, assists: 0, is_mvp: false };
+    });
+    setPerPlayer(init);
+    setScoreA(0);
+    setScoreB(0);
+    setNotes("");
+  }, [open, participants]);
+
+  const setPlayer = (
+    userId: string,
+    patch: Partial<{ team: "A" | "B" | null; goals: number; assists: number; is_mvp: boolean }>,
+  ) => {
+    setPerPlayer((prev) => ({
+      ...prev,
+      [userId]: { ...prev[userId], ...patch },
+    }));
+  };
+
+  // Сделать данного игрока MVP — снимает флаг с остальных.
+  const setMvp = (userId: string) => {
+    setPerPlayer((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((id) => {
+        next[id] = { ...next[id], is_mvp: id === userId ? !next[id].is_mvp : false };
+      });
+      return next;
+    });
+  };
+
+  const submit = async () => {
+    setSaving(true);
+    const statsArray = Object.entries(perPlayer).map(([user_id, s]) => ({
+      user_id,
+      team: s.team,
+      goals: s.goals,
+      assists: s.assists,
+      is_mvp: s.is_mvp,
+    }));
+    const { error } = await supabase.rpc("finalize_game", {
+      p_game_id: gameId,
+      p_score_a: scoreA,
+      p_score_b: scoreB,
+      p_stats: statsArray,
+      p_notes: notes.trim() || null,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Игра завершена и заархивирована");
+    setOpen(false);
+    onFinalized();
+  };
+
+  const mvpName = (() => {
+    const entry = Object.entries(perPlayer).find(([, s]) => s.is_mvp);
+    if (!entry) return null;
+    const [uid] = entry;
+    const p = participants.find((x) => x.user_id === uid);
+    return p?.profile?.display_name ?? p?.profile?.username ?? "Игрок";
+  })();
+
+  return (
+    <>
+      <Button
+        onClick={() => setOpen(true)}
+        size="sm"
+        className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+      >
+        <Trophy className="mr-1 h-3.5 w-3.5" /> Подвести итог
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Подведём итог матча</DialogTitle>
+            <DialogDescription>
+              Вы как организатор фиксируете счёт, разбиваете на команды, отмечаете голы/передачи и выбираете MVP. После сохранения игра уйдёт в архив — изменить будет нельзя.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Счёт */}
+            <div>
+              <Label>Счёт</Label>
+              <div className="mt-1 flex items-center justify-center gap-3">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Команда A</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={99}
+                    value={scoreA}
+                    onChange={(e) => setScoreA(Math.max(0, Math.min(99, Number(e.target.value) || 0)))}
+                    className="h-16 w-20 text-center font-display text-3xl font-bold"
+                  />
+                </div>
+                <span className="text-3xl font-bold text-muted-foreground">:</span>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Команда B</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={99}
+                    value={scoreB}
+                    onChange={(e) => setScoreB(Math.max(0, Math.min(99, Number(e.target.value) || 0)))}
+                    className="h-16 w-20 text-center font-display text-3xl font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Игроки */}
+            <div>
+              <Label>Игроки</Label>
+              <ul className="mt-2 space-y-2">
+                {participants.map((p) => {
+                  const s = perPlayer[p.user_id] ?? { team: null, goals: 0, assists: 0, is_mvp: false };
+                  const name = p.profile?.display_name ?? p.profile?.username ?? "Игрок";
+                  return (
+                    <li
+                      key={p.id}
+                      className={`rounded-xl border p-3 ${
+                        s.is_mvp ? "border-amber-500/50 bg-amber-500/5" : "border-border bg-background"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2 text-sm font-semibold">
+                          {name}
+                          {s.is_mvp && (
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
+                              MVP
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setPlayer(p.user_id, { team: s.team === "A" ? null : "A" })}
+                            className={`rounded-md border px-2 py-1 text-xs font-medium transition ${
+                              s.team === "A"
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background hover:border-primary/40"
+                            }`}
+                          >
+                            A
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPlayer(p.user_id, { team: s.team === "B" ? null : "B" })}
+                            className={`rounded-md border px-2 py-1 text-xs font-medium transition ${
+                              s.team === "B"
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background hover:border-primary/40"
+                            }`}
+                          >
+                            B
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-1 text-xs">
+                          Голы:
+                          <Input
+                            type="number"
+                            min={0}
+                            max={99}
+                            value={s.goals}
+                            onChange={(e) => setPlayer(p.user_id, { goals: Math.max(0, Math.min(99, Number(e.target.value) || 0)) })}
+                            className="h-8 w-14 text-center"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-xs">
+                          Передачи:
+                          <Input
+                            type="number"
+                            min={0}
+                            max={99}
+                            value={s.assists}
+                            onChange={(e) => setPlayer(p.user_id, { assists: Math.max(0, Math.min(99, Number(e.target.value) || 0)) })}
+                            className="h-8 w-14 text-center"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setMvp(p.user_id)}
+                          className={`ml-auto rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition ${
+                            s.is_mvp
+                              ? "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-300"
+                              : "border-border bg-background text-muted-foreground hover:border-amber-500/40"
+                          }`}
+                        >
+                          <Star className="mr-1 inline h-3 w-3" /> MVP
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              {mvpName && (
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  MVP матча: <b>{mvpName}</b>
+                </p>
+              )}
+            </div>
+
+            {/* Заметки */}
+            <div>
+              <Label htmlFor="finalize-notes">Комментарий (необязательно)</Label>
+              <Input
+                id="finalize-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value.slice(0, 280))}
+                placeholder="Например, краткий обзор матча"
+                className="mt-1 h-11"
+                maxLength={280}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
+              Отмена
+            </Button>
+            <Button
+              onClick={submit}
+              disabled={saving}
+              className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-1 h-4 w-4" /> Завершить и заархивировать
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function UrgentReplacementButton({
   gameId,
   sport,
