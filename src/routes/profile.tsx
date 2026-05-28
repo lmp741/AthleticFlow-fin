@@ -13,6 +13,7 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { toast } from "sonner";
 import { formatRuPhone, isValidRuPhone, toE164Ru } from "@/lib/phone";
 import { PhoneVerifyDialog } from "@/components/auth/PhoneVerifyDialog";
+import { FEATURES } from "@/lib/feature-flags";
 import { isPushSupported, getPushStatus, enablePush, disablePush, type PushStatus } from "@/lib/push";
 import { compressImage } from "@/lib/image";
 
@@ -73,6 +74,8 @@ function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [upcoming, setUpcoming] = useState<GameItem[]>([]);
   const [past, setPast] = useState<GameItem[]>([]);
+  // Сколько матчей пользователь сам организовал и они уже завершились.
+  const [organizedCount, setOrganizedCount] = useState<number>(0);
   const [ratings, setRatings] = useState<{ id: string; rater_id: string; score: number; comment: string | null; created_at: string }[]>([]);
   const [raters, setRaters] = useState<Record<string, { username: string | null; display_name: string | null; avatar_url: string | null }>>({});
   const [verifyOpen, setVerifyOpen] = useState(false);
@@ -104,6 +107,15 @@ function ProfilePage() {
           .filter((g) => new Date(g.ends_at).getTime() < now)
           .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at))
       );
+
+      // Сколько игр пользователь сам создал и довёл до конца (ends_at < now).
+      // Это «организовал успешных матчей» — показываем в метриках.
+      const { count: organizedCount } = await supabase
+        .from("games")
+        .select("id", { count: "exact", head: true })
+        .eq("organizer_id", user.id)
+        .lt("ends_at", new Date().toISOString());
+      setOrganizedCount(organizedCount ?? 0);
 
       const { data: rs } = await supabase
         .from("user_ratings")
@@ -236,7 +248,7 @@ function ProfilePage() {
                 ? "Пока без оценок"
                 : `${avgRating.toFixed(1)} / 5 · ${ratings.length} ${ratings.length === 1 ? "оценка" : "оценок"}`}
             </span>
-            {profile.phone_verified && (
+            {FEATURES.PHONE_VERIFICATION && profile.phone_verified && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-3 py-1 text-sm text-white ring-1 ring-emerald-200/40">
                 <ShieldCheck className="h-4 w-4" /> Проверенный игрок
               </span>
@@ -252,11 +264,16 @@ function ProfilePage() {
             )}
           </div>
 
-          {/* Stats row */}
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Stats row: «Сыграно» (где участник), «Организовал» (где организатор),
+              «Впереди» (предстоящие), «Серия» (текущая активность). */}
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <div className="rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-md ring-1 ring-white/15">
               <p className="text-[10px] uppercase tracking-wider text-white/70">Сыграно</p>
               <p className="font-display text-2xl font-bold text-white">{completedCount}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-md ring-1 ring-white/15">
+              <p className="text-[10px] uppercase tracking-wider text-white/70">Организовал</p>
+              <p className="font-display text-2xl font-bold text-white">{organizedCount}</p>
             </div>
             <div className="rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-md ring-1 ring-white/15">
               <p className="text-[10px] uppercase tracking-wider text-white/70">Впереди</p>
@@ -289,7 +306,7 @@ function ProfilePage() {
             {avgRating !== null && avgRating >= 4.5 && (
               <Badge className="border-white/20 bg-white/15 text-white">⭐ Любимец команды</Badge>
             )}
-            {profile.phone_verified && (
+            {FEATURES.PHONE_VERIFICATION && profile.phone_verified && (
               <Badge className="border-white/20 bg-white/15 text-white">✅ Верифицирован</Badge>
             )}
             {reliability !== null && reliability >= 90 && completedCount >= 3 && (
@@ -391,68 +408,69 @@ function ProfilePage() {
                 maxLength={60}
               />
             </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="phone">Телефон (необязательно)</Label>
-                {profile.phone_verified && isValidRuPhone(profile.phone) ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                    <ShieldCheck className="h-3 w-3" /> Подтверждён
-                  </span>
-                ) : isValidRuPhone(profile.phone) ? (
-                  <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                    Не подтверждён
-                  </span>
-                ) : null}
+            {FEATURES.PHONE_VERIFICATION && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="phone">Телефон (необязательно)</Label>
+                  {profile.phone_verified && isValidRuPhone(profile.phone) ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck className="h-3 w-3" /> Подтверждён
+                    </span>
+                  ) : isValidRuPhone(profile.phone) ? (
+                    <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                      Не подтверждён
+                    </span>
+                  ) : null}
+                </div>
+                <Input
+                  id="phone"
+                  inputMode="tel"
+                  value={formatRuPhone(profile.phone ?? "")}
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  placeholder="+7 (999) 000-00-00"
+                  className="mt-1 h-11"
+                  maxLength={20}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Только российские номера. Подтверждённый телефон можно использовать
+                  для входа и восстановления пароля.
+                </p>
+                {isValidRuPhone(profile.phone) && (
+                  <label className="mt-3 flex items-start gap-3 rounded-xl border border-border bg-background p-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 accent-primary"
+                      checked={profile.phone_public}
+                      onChange={(e) => setProfile({ ...profile, phone_public: e.target.checked })}
+                    />
+                    <div className="text-xs">
+                      <p className="font-semibold text-foreground">Показывать телефон в публичном профиле</p>
+                      <p className="text-muted-foreground">Любой пользователь сможет увидеть твой номер на странице /u/{profile.username || "…"}</p>
+                    </div>
+                  </label>
+                )}
+                {isValidRuPhone(profile.phone) && !profile.phone_verified && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={async () => {
+                      const e164 = toE164Ru(profile.phone);
+                      if (!e164 || !user) return;
+                      await supabase
+                        .from("profiles")
+                        .update({ phone: e164, phone_verified: false })
+                        .eq("id", user.id);
+                      setProfile((p) => ({ ...p, phone: e164 }));
+                      setVerifyOpen(true);
+                    }}
+                  >
+                    Подтвердить номер по SMS
+                  </Button>
+                )}
               </div>
-              <Input
-                id="phone"
-                inputMode="tel"
-                value={formatRuPhone(profile.phone ?? "")}
-                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                placeholder="+7 (999) 000-00-00"
-                className="mt-1 h-11"
-                maxLength={20}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Только российские номера. Подтверждённый телефон можно использовать
-                для входа и восстановления пароля.
-              </p>
-              {isValidRuPhone(profile.phone) && (
-                <label className="mt-3 flex items-start gap-3 rounded-xl border border-border bg-background p-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 accent-primary"
-                    checked={profile.phone_public}
-                    onChange={(e) => setProfile({ ...profile, phone_public: e.target.checked })}
-                  />
-                  <div className="text-xs">
-                    <p className="font-semibold text-foreground">Показывать телефон в публичном профиле</p>
-                    <p className="text-muted-foreground">Любой пользователь сможет увидеть твой номер на странице /u/{profile.username || "…"}</p>
-                  </div>
-                </label>
-              )}
-              {isValidRuPhone(profile.phone) && !profile.phone_verified && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={async () => {
-                    // ensure phone saved in canonical form first
-                    const e164 = toE164Ru(profile.phone);
-                    if (!e164 || !user) return;
-                    await supabase
-                      .from("profiles")
-                      .update({ phone: e164, phone_verified: false })
-                      .eq("id", user.id);
-                    setProfile((p) => ({ ...p, phone: e164 }));
-                    setVerifyOpen(true);
-                  }}
-                >
-                  Подтвердить номер по SMS
-                </Button>
-              )}
-            </div>
+            )}
             <div>
               <Label>Уровень игры</Label>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -494,7 +512,7 @@ function ProfilePage() {
           <HistorySection title="История игр" empty="Сыгранных игр пока нет" items={past} muted />
         </div>
       </section>
-      {user && isValidRuPhone(profile.phone) && (
+      {FEATURES.PHONE_VERIFICATION && user && isValidRuPhone(profile.phone) && (
         <PhoneVerifyDialog
           open={verifyOpen}
           onOpenChange={setVerifyOpen}

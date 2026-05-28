@@ -23,7 +23,9 @@ const AvatarImage = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AvatarPrimitive.Image
     ref={ref}
-    className={cn("aspect-square h-full w-full", className)}
+    // object-cover — сохраняет пропорции фото, обрезая по нужной стороне.
+    // Без него прямоугольные фото деформируются в квадрат (особенно заметно в DM).
+    className={cn("aspect-square h-full w-full object-cover", className)}
     {...props}
   />
 ));

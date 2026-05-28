@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { RequireAuth } from "@/components/auth/RequireAuth";
+import { DatePicker, TimePicker } from "@/components/ui/date-time-picker";
 
 export const Route = createFileRoute("/create")({
   head: () => ({
@@ -99,15 +100,19 @@ function CreateGamePage() {
     })();
   }, []);
 
-  // Вычисляемые поля в зависимости от модели оплаты:
-  //   split → rent есть, price = floor(rent / N), total_plan = price * N (минус остаток)
-  //   fixed → price задан, rent_total = NULL в БД, total_plan = price * N
+  // Комиссия сервиса — зашита в финальную цену игрока. По договорённости 10%.
+  // split:  price = ceil( rent × 1.1 / N )  — каждый платит долю аренды + сервисный сбор.
+  // fixed:  price = что ввёл организатор — он сам решает, включать ли наценку.
+  const COMMISSION = 0.1;
   const slots = Math.max(1, players[0]);
   const rentNum = Math.max(0, Number(rentTotal) || 0);
   const fixedNum = Math.max(0, Number(fixedPrice) || 0);
-  const pricePerPlayer =
-    payMode === "split" ? Math.floor(rentNum / slots) : fixedNum;
+  // С наценкой: ceil чтобы не недобрать комиссию.
+  const splitPrice = Math.ceil((rentNum * (1 + COMMISSION)) / slots);
+  const pricePerPlayer = payMode === "split" ? splitPrice : fixedNum;
   const totalPlan = pricePerPlayer * slots;
+  // Сколько именно комиссии собрано (для подсказки в UI).
+  const commissionTotal = Math.round(rentNum * COMMISSION);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,38 +177,28 @@ function CreateGamePage() {
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
                   <Label>Дата</Label>
-                  <div className="relative mt-1">
-                    <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="date"
+                  <div className="mt-1">
+                    <DatePicker
                       value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      className="pl-9 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                      onChange={setDate}
+                      minDate={(() => {
+                        const d = new Date();
+                        d.setHours(0, 0, 0, 0);
+                        return d;
+                      })()}
                     />
                   </div>
                 </div>
                 <div>
                   <Label>Начало</Label>
-                  <div className="relative mt-1">
-                    <ClockIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="time"
-                      value={timeStart}
-                      onChange={(e) => setTimeStart(e.target.value)}
-                      className="pl-9 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-                    />
+                  <div className="mt-1">
+                    <TimePicker value={timeStart} onChange={setTimeStart} />
                   </div>
                 </div>
                 <div>
                   <Label>Окончание</Label>
-                  <div className="relative mt-1">
-                    <ClockIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="time"
-                      value={timeEnd}
-                      onChange={(e) => setTimeEnd(e.target.value)}
-                      className="pl-9 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-                    />
+                  <div className="mt-1">
+                    <TimePicker value={timeEnd} onChange={setTimeEnd} />
                   </div>
                 </div>
               </div>
@@ -378,9 +373,10 @@ function CreateGamePage() {
                     />
                     <div className="mt-4 rounded-2xl bg-muted p-4 text-sm">
                       <p className="text-muted-foreground">С каждого игрока</p>
-                      <p className="font-display text-2xl font-bold">≈ {pricePerPlayer} ₽</p>
+                      <p className="font-display text-2xl font-bold">{pricePerPlayer} ₽</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {rentNum} ₽ ÷ {slots} = {pricePerPlayer} ₽. Если игроков станет меньше — цена пересчитается.
+                        ({rentNum} ₽ аренда + {commissionTotal} ₽ сервисный сбор 10%) ÷ {slots} игроков.
+                        При изменении количества игроков цена пересчитается.
                       </p>
                     </div>
                   </>
@@ -398,7 +394,7 @@ function CreateGamePage() {
                       <p className="text-muted-foreground">Всего соберём</p>
                       <p className="font-display text-2xl font-bold">{totalPlan} ₽</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {pricePerPlayer} ₽ × {slots} игроков. Цена с игрока зафиксирована.
+                        {pricePerPlayer} ₽ × {slots} игроков. Цена с игрока зафиксирована — включи 10% сервисного сбора сам.
                       </p>
                     </div>
                   </>

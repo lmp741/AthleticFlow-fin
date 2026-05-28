@@ -97,6 +97,15 @@ function ChatPage() {
   const { startCall } = useCall();
   const [friend, setFriend] = useState<ProfileLite | null>(null);
   const [areFriends, setAreFriends] = useState(false);
+  // Состояние заявки в друзья — нужно чтобы на экране «вы пока не друзья»
+  // показать правильную кнопку (отправить / ждать / принять).
+  const [friendship, setFriendship] = useState<{
+    id: string;
+    status: string;
+    requester_id: string;
+    addressee_id: string;
+  } | null>(null);
+  const [friendActionBusy, setFriendActionBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<DM[]>([]);
   const [body, setBody] = useState("");
@@ -126,9 +135,45 @@ function ChatPage() {
       ]);
       setFriend(prof as ProfileLite | null);
       setAreFriends(!!fr && fr.status === "accepted");
+      setFriendship((fr as typeof friendship) ?? null);
       setLoading(false);
     })();
   }, [myId, friendId]);
+
+  // Обработчики для экрана «вы пока не друзья» — без редиректа в /friends.
+  const sendFriendRequest = async () => {
+    if (!myId) return;
+    setFriendActionBusy(true);
+    const { data, error } = await supabase
+      .from("friendships")
+      .insert({ requester_id: myId, addressee_id: friendId, status: "pending" })
+      .select("id, status, requester_id, addressee_id")
+      .single();
+    setFriendActionBusy(false);
+    if (error) {
+      if (error.code === "23505") toast.error("Заявка уже отправлена");
+      else toast.error(error.message);
+      return;
+    }
+    if (data) setFriendship(data as typeof friendship);
+    toast.success("Заявка отправлена");
+  };
+  const acceptFriendRequest = async () => {
+    if (!friendship) return;
+    setFriendActionBusy(true);
+    const { error } = await supabase
+      .from("friendships")
+      .update({ status: "accepted" })
+      .eq("id", friendship.id);
+    setFriendActionBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setFriendship({ ...friendship, status: "accepted" });
+    setAreFriends(true);
+    toast.success("Заявка принята — теперь можно переписываться");
+  };
 
   const PAGE = 50;
   const [hasMore, setHasMore] = useState(false);
@@ -346,17 +391,53 @@ function ChatPage() {
   }
 
   if (!areFriends) {
+    // 3 состояния: нет заявки / отправил я (жду) / отправил он (могу принять).
+    const haveOutgoing =
+      friendship && friendship.status === "pending" && friendship.requester_id === myId;
+    const haveIncoming =
+      friendship && friendship.status === "pending" && friendship.addressee_id === myId;
     return (
       <div className="min-h-screen bg-background">
         <SiteHeader />
         <div className="container mx-auto px-4 sm:px-6 py-16 text-center">
           <h1 className="font-display text-2xl font-bold">Вы пока не друзья</h1>
           <p className="mt-2 text-muted-foreground">
-            Чтобы начать переписку, отправь заявку в друзья и дождись её принятия.
+            Чтобы начать переписку, нужно быть в друзьях.
           </p>
-          <Button asChild className="mt-4">
-            <Link to="/friends">Перейти к друзьям</Link>
-          </Button>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {!friendship && (
+              <Button
+                onClick={sendFriendRequest}
+                disabled={friendActionBusy}
+                className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+              >
+                {friendActionBusy ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Добавить в друзья
+              </Button>
+            )}
+            {haveOutgoing && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1.5 text-sm text-muted-foreground">
+                Заявка отправлена · ждём ответа
+              </span>
+            )}
+            {haveIncoming && (
+              <Button
+                onClick={acceptFriendRequest}
+                disabled={friendActionBusy}
+                className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+              >
+                {friendActionBusy ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Принять заявку
+              </Button>
+            )}
+            <Button asChild variant="outline">
+              <Link to="/friends">Все мои друзья</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );

@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Calendar, Clock, MapPin, MessageCircle, Star, Users, ArrowLeft, Send, CreditCard, CheckCircle2, Loader2, UserPlus, Copy, ImagePlus, X, Lock, Globe, Link2, ShieldCheck, Trophy, Flame, AlertTriangle, RefreshCw, CalendarClock, Zap, Search, Crown, Pencil } from "lucide-react";
 import { compressImage } from "@/lib/image";
+import { DatePicker, TimePicker } from "@/components/ui/date-time-picker";
+import { FEATURES } from "@/lib/feature-flags";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -320,12 +322,34 @@ function GamePage() {
     }
     if (!game) return;
     setJoining(true);
-    const { error } = await supabase
+    // .select().single() — забираем вставленную строку и сразу кладём в локальный state.
+    // Иначе игрок появлялся в списке только после reload (realtime может опоздать).
+    const { data: inserted, error } = await supabase
       .from("game_participants")
-      .insert({ game_id: game.id, user_id: user.id });
+      .insert({ game_id: game.id, user_id: user.id })
+      .select("id, user_id, paid")
+      .single();
     setJoining(false);
-    if (error) toast.error(error.message);
-    else toast.success("Ты в команде!");
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Ты в команде!");
+    if (inserted) {
+      // Подтягиваем профиль текущего пользователя для отображения.
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url, username")
+        .eq("id", user.id)
+        .maybeSingle();
+      const newRow = {
+        ...inserted,
+        profile: prof ?? null,
+      } as Participant;
+      setParticipants((prev) =>
+        prev.some((p) => p.user_id === user.id) ? prev : [...prev, newRow],
+      );
+    }
   };
 
   const leave = async () => {
@@ -337,8 +361,13 @@ function GamePage() {
       .eq("game_id", game.id)
       .eq("user_id", user.id);
     setJoining(false);
-    if (error) toast.error(error.message);
-    else toast.info("Ты вышел из команды");
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.info("Ты вышел из команды");
+    // Локально убираем себя из списка — realtime подтянет в фоне.
+    setParticipants((prev) => prev.filter((p) => p.user_id !== user.id));
   };
 
   if (loading) {
@@ -515,7 +544,9 @@ function GamePage() {
                   const isAdmin = p.user_id === game.organizer_id;
                   const canTogglePaid = mine || isOrganizer;
                   const gameOver = new Date(game.ends_at).getTime() < Date.now();
-                  const canRate = !mine && !!user && (isJoined || isOrganizer) && gameOver;
+                  // Оценивать может ТОЛЬКО организатор и только ПОСЛЕ окончания игры.
+                  // (В будущей фиче «капитаны» — дополним вторым правом.)
+                  const canRate = !mine && !!user && isOrganizer && gameOver;
                   // Кнопка «Написать» показывается всем участникам, кроме самого себя.
                   // Идёт в DM (через /friends/$userId) — если не друзья, экран сам покажет CTA-предложение.
                   const canDM = !mine && !!user;
@@ -651,7 +682,7 @@ function GamePage() {
                           {organizer.display_name ?? "Организатор"}
                         </span>
                       )}
-                      {organizer.phone_verified && (
+                      {FEATURES.PHONE_VERIFICATION && organizer.phone_verified && (
                         <Badge className="gap-1 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400">
                           <ShieldCheck className="h-3 w-3" /> Проверен
                         </Badge>
@@ -761,32 +792,8 @@ function GamePage() {
               </p>
             </div>
 
-            <div className="rounded-3xl border border-border bg-card p-5 shadow-card">
-              <h3 className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Гарантии</h3>
-              <ul className="mt-3 space-y-3 text-sm">
-                <li className="flex items-start gap-3">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                  <div>
-                    <p className="font-semibold">Проверенные организаторы</p>
-                    <p className="text-xs text-muted-foreground">Телефон и история игр подтверждены.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <div>
-                    <p className="font-semibold">Возврат при отмене</p>
-                    <p className="text-xs text-muted-foreground">100% возврат, если игра отменена организатором или за 6+ часов до старта.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <div>
-                    <p className="font-semibold">Надёжная явка</p>
-                    <p className="text-xs text-muted-foreground">Игроки подтверждают участие оплатой.</p>
-                  </div>
-                </li>
-              </ul>
-            </div>
+            {/* Блок «Гарантии» убран — Misha счёл его юзлесс декорацией.
+                Если решим вернуть — раскоментировать историю в git. */}
           </aside>
         </div>
 
@@ -898,6 +905,12 @@ function GamePage() {
             <p className="text-center text-xs text-muted-foreground">
               Это демо-оплата. Реальное списание не произойдёт.
             </p>
+            {/* Дисклеймер про fair play — не «правила», а человеческая просьба
+                держаться в рамках. Полное саморегулирование сообщества. */}
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+              <p className="mb-1 font-semibold text-foreground">Один момент</p>
+              На поле просим вести себя уважительно: без мата, без агрессии, без оскорблений в адрес соперников и организатора. Athletic Flow — про спорт и хорошее настроение, а не конфликты. Спасибо.
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>
@@ -1053,18 +1066,37 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
         }
         image_url = supabase.storage.from("chat-images").getPublicUrl(path).data.publicUrl;
       }
-      const { error } = await supabase.from("game_messages").insert({
-        game_id: gameId,
-        user_id: userId,
-        body: body || null,
-        image_url,
-      });
+      // .select().single() — забираем вставленную строку и сразу кладём в локальный
+      // state без ожидания realtime. Это закрывает баг «не вижу своё сообщение/фото
+      // пока не обновлю страницу» — особенно заметный для картинок.
+      const { data: inserted, error } = await supabase
+        .from("game_messages")
+        .insert({
+          game_id: gameId,
+          user_id: userId,
+          body: body || null,
+          image_url,
+        })
+        .select("id, user_id, body, image_url, created_at")
+        .single();
       if (error) {
         console.error("[game-chat] insert failed", error);
         toast.error(error.message);
       } else {
         setText("");
         clearImage();
+        if (inserted) {
+          // Подтягиваем свой профиль локально (он редко меняется, можно из имеющегося).
+          const myMsg = inserted as Message;
+          // Профиль авторового сообщения — берём из существующих или пустой:
+          // realtime/load всё равно потом дозальёт.
+          const existingProfile = messages.find((m) => m.user_id === userId)?.profile ?? null;
+          setMessages((prev) =>
+            prev.some((x) => x.id === myMsg.id)
+              ? prev
+              : [...prev, { ...myMsg, profile: existingProfile }],
+          );
+        }
       }
     } catch (e) {
       console.error("[game-chat] send crashed", e);
@@ -1268,7 +1300,11 @@ function EditGameButton({
   const rentNum = Math.max(0, Number(rentTotal) || 0);
   const fixedNum = Math.max(0, Number(fixedPrice) || 0);
   // Главная формула автопересчёта: в split-режиме цена/чел всегда производная от rent/N.
-  const computedPrice = payMode === "split" ? Math.floor(rentNum / slotsSafe) : fixedNum;
+  // Комиссия сервиса 10% — зашита в цену игрока в split-режиме.
+  // ceil — чтобы не недобрать сборы при округлении.
+  const COMMISSION = 0.1;
+  const computedPrice =
+    payMode === "split" ? Math.ceil((rentNum * (1 + COMMISSION)) / slotsSafe) : fixedNum;
   const totalPlan = computedPrice * slotsSafe;
 
   const submit = async () => {
@@ -1355,20 +1391,35 @@ function EditGameButton({
               </select>
             </div>
 
-            {/* Дата / Время — на мобиле дата на всю ширину, время на пол. */}
+            {/* Дата / Время через shadcn Calendar + select — нативные пикеры
+                плохо открывались на десктопе. Этот UX одинаковый везде. */}
             <div className="space-y-2">
               <div>
-                <Label htmlFor="edit-date">Дата</Label>
-                <Input id="edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 h-11 w-full" />
+                <Label>Дата</Label>
+                <div className="mt-1">
+                  <DatePicker
+                    value={date}
+                    onChange={setDate}
+                    minDate={(() => {
+                      const d = new Date();
+                      d.setHours(0, 0, 0, 0);
+                      return d;
+                    })()}
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label htmlFor="edit-tstart">Начало</Label>
-                  <Input id="edit-tstart" type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className="mt-1 h-11 w-full" />
+                  <Label>Начало</Label>
+                  <div className="mt-1">
+                    <TimePicker value={timeStart} onChange={setTimeStart} />
+                  </div>
                 </div>
                 <div>
-                  <Label htmlFor="edit-tend">Конец</Label>
-                  <Input id="edit-tend" type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className="mt-1 h-11 w-full" />
+                  <Label>Конец</Label>
+                  <div className="mt-1">
+                    <TimePicker value={timeEnd} onChange={setTimeEnd} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1412,7 +1463,8 @@ function EditGameButton({
                     className="mt-1 h-11"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {rentNum} ₽ ÷ {slotsSafe} = <b>{computedPrice} ₽</b> с игрока (пересчитается при изменении кол-ва)
+                    ({rentNum} ₽ + 10% сервис) ÷ {slotsSafe} игроков = <b>{computedPrice} ₽</b> с игрока.
+                    Пересчитается, если изменишь кол-во игроков.
                   </p>
                 </div>
               ) : (
