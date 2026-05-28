@@ -97,8 +97,13 @@ export function DatePicker({
 }
 
 /**
- * Time picker — два select-а (часы / минуты).
- * Минуты с шагом 5 — для футбола минута в минуту никто не назначает.
+ * Time picker — кнопка с текущим временем, по клику открывается popover
+ * с двумя scrollable-колонками: часы и минуты. Тап по числу подсвечивает
+ * и записывает в state, popover остаётся открыт — можно поменять обе части
+ * и закрыть кликом наружу.
+ *
+ * Лучше нативного <input type="time"> (плохо открывается на десктопе),
+ * лучше двух <select> (старый и неудобный UI).
  */
 export function TimePicker({
   value,
@@ -111,6 +116,7 @@ export function TimePicker({
   className?: string;
   step?: number;
 }) {
+  const [open, setOpen] = useState(false);
   const [hh = "19", mm = "00"] = (value ?? "").split(":");
 
   const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")), []);
@@ -123,29 +129,90 @@ export function TimePicker({
   const setMM = (m: string) => onChange(`${hh}:${m}`);
 
   return (
-    <div className={cn("flex h-11 items-center gap-1 rounded-md border border-input bg-background px-2", className)}>
-      <ClockIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <select
-        value={hh}
-        onChange={(e) => setHH(e.target.value)}
-        className="h-full bg-transparent text-sm focus:outline-none"
-        aria-label="Часы"
-      >
-        {hours.map((h) => (
-          <option key={h} value={h}>{h}</option>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-11 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm",
+            "hover:bg-accent hover:text-accent-foreground",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className,
+          )}
+        >
+          <span className="flex items-center gap-2">
+            <ClockIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="font-mono tabular-nums">{hh}:{mm}</span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <div className="flex">
+          <TimeColumn
+            label="Часы"
+            items={hours}
+            value={hh}
+            onPick={setHH}
+          />
+          <div className="w-px self-stretch bg-border" />
+          <TimeColumn
+            label="Мин"
+            items={minutes}
+            value={mm}
+            onPick={setMM}
+          />
+        </div>
+        <div className="border-t border-border px-2 py-1.5 text-center">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Готово
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Внутренний компонент колонки часов/минут — scrollable список с подсветкой выбранного.
+ */
+function TimeColumn({
+  label,
+  items,
+  value,
+  onPick,
+}: {
+  label: string;
+  items: string[];
+  value: string;
+  onPick: (v: string) => void;
+}) {
+  return (
+    <div className="flex w-16 flex-col">
+      <div className="border-b border-border px-2 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className="max-h-56 overflow-y-auto py-1">
+        {items.map((it) => (
+          <button
+            key={it}
+            type="button"
+            onClick={() => onPick(it)}
+            className={cn(
+              "block w-full px-3 py-1.5 text-center font-mono text-sm tabular-nums transition",
+              value === it
+                ? "bg-primary text-primary-foreground font-bold"
+                : "hover:bg-accent",
+            )}
+          >
+            {it}
+          </button>
         ))}
-      </select>
-      <span className="text-muted-foreground">:</span>
-      <select
-        value={mm}
-        onChange={(e) => setMM(e.target.value)}
-        className="h-full bg-transparent text-sm focus:outline-none"
-        aria-label="Минуты"
-      >
-        {minutes.map((m) => (
-          <option key={m} value={m}>{m}</option>
-        ))}
-      </select>
+      </div>
     </div>
   );
 }

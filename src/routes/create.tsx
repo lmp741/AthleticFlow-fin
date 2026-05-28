@@ -100,19 +100,19 @@ function CreateGamePage() {
     })();
   }, []);
 
-  // Комиссия сервиса — зашита в финальную цену игрока. По договорённости 10%.
-  // split:  price = ceil( rent × 1.1 / N )  — каждый платит долю аренды + сервисный сбор.
-  // fixed:  price = что ввёл организатор — он сам решает, включать ли наценку.
+  // Комиссия 10% — внутреннее правило, в UI не показываем.
+  // split:  игрок платит ceil(rent × 1.1 / N) — наценка покрывает сервисный сбор.
+  // fixed:  игрок платит ceil(fixed × 1.1) — то же правило, но от введённой суммы.
+  // Организатор видит только цену, которую увидит игрок; распределение между
+  // владельцем стадиона и сервисом — внутренний механизм.
   const COMMISSION = 0.1;
   const slots = Math.max(1, players[0]);
   const rentNum = Math.max(0, Number(rentTotal) || 0);
   const fixedNum = Math.max(0, Number(fixedPrice) || 0);
-  // С наценкой: ceil чтобы не недобрать комиссию.
   const splitPrice = Math.ceil((rentNum * (1 + COMMISSION)) / slots);
-  const pricePerPlayer = payMode === "split" ? splitPrice : fixedNum;
+  const fixedPriceFinal = Math.ceil(fixedNum * (1 + COMMISSION));
+  const pricePerPlayer = payMode === "split" ? splitPrice : fixedPriceFinal;
   const totalPlan = pricePerPlayer * slots;
-  // Сколько именно комиссии собрано (для подсказки в UI).
-  const commissionTotal = Math.round(rentNum * COMMISSION);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -375,8 +375,7 @@ function CreateGamePage() {
                       <p className="text-muted-foreground">С каждого игрока</p>
                       <p className="font-display text-2xl font-bold">{pricePerPlayer} ₽</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        ({rentNum} ₽ аренда + {commissionTotal} ₽ сервисный сбор 10%) ÷ {slots} игроков.
-                        При изменении количества игроков цена пересчитается.
+                        Аренда делится между участниками. Если игроков станет меньше — цена пересчитается.
                       </p>
                     </div>
                   </>
@@ -391,10 +390,10 @@ function CreateGamePage() {
                       className="mt-1"
                     />
                     <div className="mt-4 rounded-2xl bg-muted p-4 text-sm">
-                      <p className="text-muted-foreground">Всего соберём</p>
-                      <p className="font-display text-2xl font-bold">{totalPlan} ₽</p>
+                      <p className="text-muted-foreground">С каждого игрока</p>
+                      <p className="font-display text-2xl font-bold">{pricePerPlayer} ₽</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {pricePerPlayer} ₽ × {slots} игроков. Цена с игрока зафиксирована — включи 10% сервисного сбора сам.
+                        Фиксированная цена с каждого. Всего соберём: {totalPlan} ₽ ({pricePerPlayer} ₽ × {slots} игроков).
                       </p>
                     </div>
                   </>

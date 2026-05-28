@@ -19,6 +19,7 @@ import { SiteHeader } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { compressImage } from "@/lib/image";
+import { uploadToBucket } from "@/lib/upload";
 import { Textarea } from "@/components/ui/textarea";
 
 function wrapToWidth(s: string, width = 54): string {
@@ -315,20 +316,20 @@ function ChatPage() {
     const ext = toUpload.name.split(".").pop()?.toLowerCase() ?? "bin";
     const safe = toUpload.name.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
     const path = `${myId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe || `file.${ext}`}`;
-    const { error: upErr } = await supabase.storage
-      .from("dm-media")
-      .upload(path, toUpload, { upsert: false, contentType: toUpload.type });
-    if (upErr) {
+    // Локальный аплоадер вместо Supabase Storage — см. src/lib/upload.ts.
+    let publicUrl: string;
+    try {
+      const res = await uploadToBucket("dm-media", path, toUpload);
+      publicUrl = res.url;
+    } catch (e) {
       setUploading(null);
-      // Реальная причина — обычно RLS на bucket. Текст ошибки выводим, чтоб Misha видел.
-      toast.error(`Не удалось загрузить файл: ${upErr.message}`);
+      toast.error(`Не удалось загрузить файл: ${e instanceof Error ? e.message : "ошибка"}`);
       return;
     }
-    const { data: pub } = supabase.storage.from("dm-media").getPublicUrl(path);
     await send({
-      image_url: kind === "image" ? pub.publicUrl : null,
-      video_url: kind === "video" ? pub.publicUrl : null,
-      document_url: kind === "document" ? pub.publicUrl : null,
+      image_url: kind === "image" ? publicUrl : null,
+      video_url: kind === "video" ? publicUrl : null,
+      document_url: kind === "document" ? publicUrl : null,
       document_name: kind === "document" ? file.name : null,
     });
     setUploading(null);

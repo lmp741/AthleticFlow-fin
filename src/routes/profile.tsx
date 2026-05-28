@@ -16,6 +16,7 @@ import { PhoneVerifyDialog } from "@/components/auth/PhoneVerifyDialog";
 import { FEATURES } from "@/lib/feature-flags";
 import { isPushSupported, getPushStatus, enablePush, disablePush, type PushStatus } from "@/lib/push";
 import { compressImage } from "@/lib/image";
+import { uploadToBucket } from "@/lib/upload";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({ meta: [{ title: "Профиль — Athletic Flow" }] }),
@@ -195,14 +196,15 @@ function ProfilePage() {
     }
     const ext = (toUpload.name.split(".").pop() ?? "jpg").toLowerCase();
     const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("avatars").upload(path, toUpload, { upsert: true });
-    if (upErr) {
+    let url: string;
+    try {
+      const res = await uploadToBucket("avatars", path, toUpload);
+      url = res.url;
+    } catch (e) {
       setUploading(false);
-      toast.error(upErr.message);
+      toast.error(e instanceof Error ? e.message : "Не удалось загрузить");
       return;
     }
-    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
-    const url = pub.publicUrl;
     await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
     setProfile((p) => ({ ...p, avatar_url: url }));
     setUploading(false);
@@ -1335,18 +1337,18 @@ function MediaSection({ userId, isOwner }: { userId: string; isOwner?: boolean }
     }
     const ext = toUpload.name.split(".").pop()?.toLowerCase() ?? (isVideo ? "mp4" : "jpg");
     const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from("profile-media")
-      .upload(path, toUpload, { upsert: false, contentType: toUpload.type });
-    if (upErr) {
+    let publicUrl: string;
+    try {
+      const res = await uploadToBucket("profile-media", path, toUpload);
+      publicUrl = res.url;
+    } catch (e) {
       setUploading(false);
-      toast.error(upErr.message);
+      toast.error(e instanceof Error ? e.message : "Не удалось загрузить");
       return;
     }
-    const { data: pub } = supabase.storage.from("profile-media").getPublicUrl(path);
     const { error: insErr } = await supabase
       .from("profile_media")
-      .insert({ user_id: userId, url: pub.publicUrl, storage_path: path, kind: isVideo ? "video" : "image" });
+      .insert({ user_id: userId, url: publicUrl, storage_path: path, kind: isVideo ? "video" : "image" });
     setUploading(false);
     if (insErr) {
       toast.error(insErr.message);

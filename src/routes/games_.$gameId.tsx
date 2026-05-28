@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Calendar, Clock, MapPin, MessageCircle, Star, Users, ArrowLeft, Send, CreditCard, CheckCircle2, Loader2, UserPlus, Copy, ImagePlus, X, Lock, Globe, Link2, ShieldCheck, Trophy, Flame, AlertTriangle, RefreshCw, CalendarClock, Zap, Search, Crown, Pencil } from "lucide-react";
 import { compressImage } from "@/lib/image";
+import { uploadToBucket } from "@/lib/upload";
 import { DatePicker, TimePicker } from "@/components/ui/date-time-picker";
 import { FEATURES } from "@/lib/feature-flags";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1044,8 +1045,6 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
     let image_url: string | null = null;
     try {
       if (imageFile) {
-        // Сжимаем фото на клиенте — экономим storage и трафик.
-        // Если compress упал в Safari — fallback на оригинал.
         let toUpload: File = imageFile;
         try {
           toUpload = await compressImage(imageFile, { maxDim: 1920, maxSizeMB: 2 });
@@ -1054,17 +1053,16 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
         }
         const ext = toUpload.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${gameId}/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("chat-images")
-          .upload(path, toUpload, { contentType: toUpload.type, upsert: false });
-        if (upErr) {
-          // Показываем настоящую причину — раньше «не загружается» было тихо.
-          console.error("[game-chat] upload failed", upErr);
-          toast.error(`Не удалось загрузить фото: ${upErr.message}`);
+        // Загружаем через свой /api/upload — Supabase Storage из РФ-VPS не работает (ТСПУ режет).
+        try {
+          const { url } = await uploadToBucket("chat-images", path, toUpload);
+          image_url = url;
+        } catch (e) {
+          console.error("[game-chat] upload failed", e);
+          toast.error(`Не удалось загрузить фото: ${e instanceof Error ? e.message : "ошибка"}`);
           setUploading(false);
           return;
         }
-        image_url = supabase.storage.from("chat-images").getPublicUrl(path).data.publicUrl;
       }
       // .select().single() — забираем вставленную строку и сразу кладём в локальный
       // state без ожидания realtime. Это закрывает баг «не вижу своё сообщение/фото
@@ -1300,11 +1298,13 @@ function EditGameButton({
   const rentNum = Math.max(0, Number(rentTotal) || 0);
   const fixedNum = Math.max(0, Number(fixedPrice) || 0);
   // Главная формула автопересчёта: в split-режиме цена/чел всегда производная от rent/N.
-  // Комиссия сервиса 10% — зашита в цену игрока в split-режиме.
-  // ceil — чтобы не недобрать сборы при округлении.
+  // Комиссия 10% — внутреннее правило, в UI не упоминаем.
+  // В обоих режимах цена игрока = ceil(input × 1.1).
   const COMMISSION = 0.1;
   const computedPrice =
-    payMode === "split" ? Math.ceil((rentNum * (1 + COMMISSION)) / slotsSafe) : fixedNum;
+    payMode === "split"
+      ? Math.ceil((rentNum * (1 + COMMISSION)) / slotsSafe)
+      : Math.ceil(fixedNum * (1 + COMMISSION));
   const totalPlan = computedPrice * slotsSafe;
 
   const submit = async () => {
@@ -1463,8 +1463,7 @@ function EditGameButton({
                     className="mt-1 h-11"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    ({rentNum} ₽ + 10% сервис) ÷ {slotsSafe} игроков = <b>{computedPrice} ₽</b> с игрока.
-                    Пересчитается, если изменишь кол-во игроков.
+                    Игрок платит <b>{computedPrice} ₽</b>. Цена пересчитается, если изменишь количество игроков.
                   </p>
                 </div>
               ) : (
