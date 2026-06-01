@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Calendar, MapPin, Users, Wallet, Lock, Globe, Eye, Clock as ClockIcon, Sparkles, Check } from "lucide-react";
+import { Calendar, MapPin, Users, Wallet, Lock, Globe, Eye, Clock as ClockIcon, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SiteHeader, SiteFooter } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
@@ -81,9 +81,6 @@ function CreateGamePage() {
   const [fixedPrice, setFixedPrice] = useState("500");
   const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
-  // Требовать одобрение заявок организатором перед попаданием в состав.
-  // Когда включено — игроки видят кнопку «Подать заявку», а не «Записаться».
-  const [requiresApproval, setRequiresApproval] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -139,7 +136,6 @@ function CreateGamePage() {
         rent_total: payMode === "split" ? rentNum : null,
         description: description || null,
         is_private: isPrivate,
-        requires_approval: requiresApproval,
       })
       .select("id")
       .single();
@@ -285,29 +281,13 @@ function CreateGamePage() {
                 </button>
               </div>
 
-              {/* Аппрув заявок: имеет смысл и для открытых, и для приватных. */}
-              <button
-                type="button"
-                onClick={() => setRequiresApproval((v) => !v)}
-                className={`mt-3 flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all ${
-                  requiresApproval ? "border-primary bg-primary/5 shadow-glow" : "border-border hover:border-primary/40"
-                }`}
-              >
-                <div
-                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${
-                    requiresApproval ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"
-                  }`}
-                >
-                  {requiresApproval && <Check className="h-3.5 w-3.5" />}
-                </div>
-                <div>
-                  <div className="font-semibold">Принимать игроков по заявкам</div>
-                  <div className="text-xs text-muted-foreground">
-                    Игроки подают заявку — ты подтверждаешь или отклоняешь. Удобно, если хочешь собрать
-                    однородный состав.
-                  </div>
-                </div>
-              </button>
+              {/* В открытых играх запись всегда через заявку с аппрувом организатора.
+                  В приватных — прямой вход по инвайт-ссылке. Без отдельной галки. */}
+              <p className="mt-3 rounded-xl border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                {isPrivate
+                  ? "В приватной игре участники заходят прямо по ссылке-приглашению."
+                  : "В открытой игре игроки подают заявку — ты подтверждаешь или отклоняешь."}
+              </p>
             </Card>
           </div>
 

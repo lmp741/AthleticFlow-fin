@@ -64,8 +64,6 @@ interface GameDetail {
   rent_total: number | null;
   // Финализирована и заархивирована — игра только для просмотра, без чата и записи.
   archived_at: string | null;
-  // Игроки добавляются в состав только после одобрения заявки организатором.
-  requires_approval: boolean;
   stadium: { id: string; name: string; address: string } | null;
 }
 
@@ -135,7 +133,7 @@ function GamePage() {
   // Результат финализированной игры — null если ещё не заархивирована.
   const [result, setResult] = useState<GameResult | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
-  // Заявка текущего пользователя на эту игру (для игр с requires_approval).
+  // Заявка текущего пользователя на эту игру (для открытых игр — там запись через аппрув).
   // Хранится pending / rejected — approved не показываем (уже участник).
   const [myRequest, setMyRequest] = useState<JoinRequest | null>(null);
   // Pending-заявки для организатора со склейкой профилей.
@@ -159,7 +157,7 @@ function GamePage() {
     const { data, error } = await supabase
       .from("games")
       .select(
-        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, archived_at, requires_approval, stadium:stadiums(id,name,address)"
+        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, archived_at, stadium:stadiums(id,name,address)"
       )
       .eq("id", gameId)
       .maybeSingle();
@@ -675,7 +673,10 @@ function GamePage() {
                       userId={user!.id}
                       inviteToken={game.invite_token}
                     />
-                    {!full && (
+                    {/* Срочная замена — рассылка по локальной базе игроков.
+                        Доступна только организатору, иначе любой участник мог бы
+                        спамить всех соседей по полю. */}
+                    {isOrganizer && !full && (
                       <UrgentReplacementButton
                         gameId={game.id}
                         sport={game.sport}
@@ -712,9 +713,10 @@ function GamePage() {
               )}
             </div>
 
-            {/* Блок «Заявки на участие» — показываем только организатору живой игры
-                с requires_approval и хотя бы одной pending-заявкой. */}
-            {isOrganizer && !isArchived && game.requires_approval && pendingRequests.length > 0 && (
+            {/* Блок «Заявки на участие» — показываем только организатору живой
+                открытой игры с хотя бы одной pending-заявкой. В приватных играх
+                заявок не бывает — вход по инвайту прямой. */}
+            {isOrganizer && !isArchived && !game.is_private && pendingRequests.length > 0 && (
               <JoinRequestsList
                 requests={pendingRequests}
                 onApprove={approveRequest}
@@ -971,7 +973,8 @@ function GamePage() {
                 <Button asChild size="lg" variant="outline" className="mt-6 w-full">
                   <Link to="/games">Вернуться к каталогу</Link>
                 </Button>
-              ) : game.requires_approval ? (
+              ) : !game.is_private ? (
+                // Открытая игра — запись только через заявку.
                 <JoinRequestPanel
                   myRequest={myRequest}
                   full={full}
@@ -979,6 +982,8 @@ function GamePage() {
                   busy={joining}
                 />
               ) : (
+                // Приватная игра — пользователь попал сюда по инвайт-ссылке,
+                // запись прямая (после подтверждения по invite_token RLS-ом).
                 <Button
                   onClick={join}
                   disabled={joining || full}
@@ -1042,7 +1047,7 @@ function GamePage() {
             <Button asChild size="lg" variant="outline">
               <Link to="/games">К каталогу</Link>
             </Button>
-          ) : game.requires_approval ? (
+          ) : !game.is_private ? (
             myRequest?.status === "pending" ? (
               <Button disabled size="lg" variant="outline" className="gap-1">
                 <Clock className="h-4 w-4" /> На рассмотрении
@@ -1488,7 +1493,6 @@ function EditGameButton({
   const [timeEnd, setTimeEnd] = useState<string>(toTimeStr(initialEnd));
   const [description, setDescription] = useState<string>(game.description ?? "");
   const [isPrivate, setIsPrivate] = useState<boolean>(game.is_private);
-  const [requiresApproval, setRequiresApproval] = useState<boolean>(game.requires_approval);
   // Если у игры был rent_total — это split-режим. Иначе fixed.
   const [payMode, setPayMode] = useState<"split" | "fixed">(
     game.rent_total != null ? "split" : "fixed",
@@ -1508,7 +1512,6 @@ function EditGameButton({
     setTimeEnd(toTimeStr(new Date(game.ends_at)));
     setDescription(game.description ?? "");
     setIsPrivate(game.is_private);
-    setRequiresApproval(game.requires_approval);
     setPayMode(game.rent_total != null ? "split" : "fixed");
     setRentTotal(game.rent_total != null ? String(game.rent_total) : String(game.price_per_player * game.slots_total));
     setFixedPrice(String(game.price_per_player));
@@ -1553,7 +1556,6 @@ function EditGameButton({
         ends_at: ends.toISOString(),
         description: description.trim() || null,
         is_private: isPrivate,
-        requires_approval: requiresApproval,
         price_per_player: computedPrice,
         // Сохраняем rent_total только в split-режиме; в fixed обнуляем.
         rent_total: payMode === "split" ? rentNum : null,
@@ -1735,21 +1737,6 @@ function EditGameButton({
               </div>
             </label>
 
-            {/* Аппрув заявок */}
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
-              <input
-                type="checkbox"
-                checked={requiresApproval}
-                onChange={(e) => setRequiresApproval(e.target.checked)}
-                className="mt-0.5 h-4 w-4"
-              />
-              <div className="text-sm">
-                <p className="font-medium">Принимать игроков по заявкам</p>
-                <p className="text-xs text-muted-foreground">
-                  Игроки видят кнопку «Подать заявку». Ты подтверждаешь — попадают в состав. Уже записанных это не затрагивает.
-                </p>
-              </div>
-            </label>
           </div>
 
           <DialogFooter>
@@ -2148,7 +2135,7 @@ function FinalizeGameButton({
 }
 
 /**
- * Панель для не-участника на странице игры с requires_approval.
+ * Панель для не-участника на странице открытой игры — запись только через заявку.
  * 4 состояния:
  *   - заявки нет → кнопка «Подать заявку» с диалогом сообщения
  *   - pending → плашка «На рассмотрении»
@@ -2238,7 +2225,14 @@ function RequestDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-md">
+      {/*
+        На мобилке системная клавиатура поднимается из нижней половины экрана
+        и закрывает центрированный модал с textarea — пишешь и не видишь, что пишешь.
+        Поэтому на маленьких экранах прибиваем диалог к верху (top-4),
+        а на sm+ возвращаем привычное центрирование. !-важно, чтобы перебить
+        собственные top-[50%]/-translate-y-1/2 у DialogContent из shadcn/ui.
+      */}
+      <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Заявка на участие</DialogTitle>
           <DialogDescription>
@@ -2380,7 +2374,7 @@ function JoinRequestsList({
       )}
 
       <Dialog open={!!rejectingId} onOpenChange={(o) => !o && setRejectingId(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Отклонить заявку</DialogTitle>
             <DialogDescription>

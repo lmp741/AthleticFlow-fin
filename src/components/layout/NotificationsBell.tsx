@@ -54,6 +54,9 @@ function iconForType(type: string) {
   if (type === "urgent_replacement") return Zap;
   if (type === "game_invite") return Calendar;
   if (type === "friend_request") return UserPlus;
+  if (type === "join_request" || type === "join_approved") return UserPlus;
+  if (type === "join_rejected") return X;
+  if (type === "game_finalized") return Star;
   return Sparkles;
 }
 
@@ -287,7 +290,10 @@ export function NotificationsBell() {
     }
   };
 
-  // Клик по нотификации → переход и помечаем прочитанной (если ещё не).
+  // Клик по нотификации → переход на триггер события и помечаем прочитанной.
+  // TanStack Router не умеет навигировать на динамические пути (`/games/<uuid>`)
+  // как plain string — нужны params. Поэтому идём через window.location.assign,
+  // это заодно даёт полный рефреш страницы и страница игры/чата всё подгрузит сама.
   const handleNotifClick = async (n: NotifRow) => {
     setOpen(false);
     if (!n.read_at) {
@@ -298,7 +304,12 @@ export function NotificationsBell() {
       supabase.rpc("mark_notifications_read", { p_ids: [n.id] });
     }
     if (n.url) {
-      navigate({ to: n.url });
+      try {
+        window.location.assign(n.url);
+      } catch {
+        // Fallback на роутер если что-то странное с URL.
+        navigate({ to: n.url as never });
+      }
     }
   };
 

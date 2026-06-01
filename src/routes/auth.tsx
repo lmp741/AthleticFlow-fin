@@ -21,10 +21,15 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  // После успешного signUp — фиксируем флаг, чтобы:
+  //   1) Не редиректить на /games даже если Supabase отдал нам session
+  //      (email confirmation off в проекте — это рабочий сценарий).
+  //   2) Показать большую inline-плашку «Проверь почту» вместо формы.
+  const [justSignedUp, setJustSignedUp] = useState(false);
 
   useEffect(() => {
-    if (user) navigate({ to: "/games" });
-  }, [user, navigate]);
+    if (user && !justSignedUp) navigate({ to: "/games" });
+  }, [user, navigate, justSignedUp]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +46,7 @@ function AuthPage() {
         });
         if (error) throw error;
         toast.success("Аккаунт создан!");
+        setJustSignedUp(true);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -66,6 +72,28 @@ function AuthPage() {
           </Link>
         </div>
 
+        {justSignedUp ? (
+          <div className="mt-8 space-y-4 text-center">
+            <h1 className="font-display text-2xl font-bold">Аккаунт создан</h1>
+            <p className="text-sm text-muted-foreground">
+              Мы отправили письмо на <b className="text-foreground">{email}</b>. Открой его и подтверди адрес,
+              чтобы войти. Письмо может прийти через 1–2 минуты — проверь папку «Спам».
+            </p>
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full"
+              onClick={() => {
+                setJustSignedUp(false);
+                setMode("signin");
+                setPassword("");
+              }}
+            >
+              Перейти ко входу
+            </Button>
+          </div>
+        ) : (
+        <>
         <h1 className="mt-8 font-display text-2xl font-bold">
           {mode === "signin" ? "Вход в Athletic Flow" : "Регистрация"}
         </h1>
@@ -119,13 +147,6 @@ function AuthPage() {
           >
             {loading ? "..." : mode === "signin" ? "Войти" : "Создать аккаунт"}
           </Button>
-          {mode === "signin" && (
-            <p className="text-center text-xs">
-              <Link to="/reset-phone" className="text-muted-foreground hover:text-primary">
-                Забыли пароль? Восстановить по SMS →
-              </Link>
-            </p>
-          )}
           <p className="text-center text-sm text-muted-foreground">
             {mode === "signin" ? "Нет аккаунта?" : "Уже есть аккаунт?"}{" "}
             <button
@@ -137,6 +158,8 @@ function AuthPage() {
             </button>
           </p>
         </form>
+        </>
+        )}
       </div>
     </div>
   );
