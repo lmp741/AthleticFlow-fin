@@ -13,6 +13,7 @@ import { SiteHeader, SiteFooter } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
@@ -63,7 +64,19 @@ interface GameDetail {
   rent_total: number | null;
   // Финализирована и заархивирована — игра только для просмотра, без чата и записи.
   archived_at: string | null;
+  // Игроки добавляются в состав только после одобрения заявки организатором.
+  requires_approval: boolean;
   stadium: { id: string; name: string; address: string } | null;
+}
+
+interface JoinRequest {
+  id: string;
+  user_id: string;
+  status: "pending" | "approved" | "rejected";
+  message: string | null;
+  reject_reason: string | null;
+  created_at: string;
+  profile?: { display_name: string | null; avatar_url: string | null; username: string | null } | null;
 }
 
 interface GameResult {
@@ -122,6 +135,11 @@ function GamePage() {
   // Результат финализированной игры — null если ещё не заархивирована.
   const [result, setResult] = useState<GameResult | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
+  // Заявка текущего пользователя на эту игру (для игр с requires_approval).
+  // Хранится pending / rejected — approved не показываем (уже участник).
+  const [myRequest, setMyRequest] = useState<JoinRequest | null>(null);
+  // Pending-заявки для организатора со склейкой профилей.
+  const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
   // Доступ через invite — карточка видна, но без чата/деталей участников.
   const [viaInvite, setViaInvite] = useState(false);
   const [organizer, setOrganizer] = useState<{
@@ -141,7 +159,7 @@ function GamePage() {
     const { data, error } = await supabase
       .from("games")
       .select(
-        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, archived_at, stadium:stadiums(id,name,address)"
+        "id, sport, level, starts_at, ends_at, price_per_player, slots_total, description, organizer_id, is_private, invite_token, rent_total, archived_at, requires_approval, stadium:stadiums(id,name,address)"
       )
       .eq("id", gameId)
       .maybeSingle();
@@ -272,10 +290,51 @@ function GamePage() {
     setPlayerStats((stats ?? []) as PlayerStat[]);
   };
 
+  // Заявки на участие — две задачи в одном запросе:
+  //   1) моя заявка (любого статуса), чтобы понимать что рисовать вместо кнопки «Записаться».
+  //   2) если я организатор — список pending со склейкой профилей.
+  // RLS пропустит только мои + организаторские строки, всё остальное отфильтрует БД.
+  const loadJoinRequests = async () => {
+    if (!user) {
+      setMyRequest(null);
+      setPendingRequests([]);
+      return;
+    }
+    const { data } = await supabase
+      .from("game_join_requests")
+      .select("id, user_id, status, message, reject_reason, created_at")
+      .eq("game_id", gameId)
+      .order("created_at", { ascending: false });
+    const rows = (data ?? []) as JoinRequest[];
+    // Моя самая свежая заявка (она первая после сортировки desc).
+    const mine = rows.find((r) => r.user_id === user.id) ?? null;
+    setMyRequest(mine);
+
+    // Pending-список для организатора — со склейкой профилей одним запросом.
+    const pending = rows.filter((r) => r.status === "pending" && r.user_id !== user.id);
+    if (pending.length > 0) {
+      const userIds = Array.from(new Set(pending.map((r) => r.user_id)));
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url, username")
+        .in("id", userIds);
+      const map = new Map((profs ?? []).map((p) => [p.id, p]));
+      setPendingRequests(
+        pending.map((r) => ({
+          ...r,
+          profile: map.get(r.user_id) ?? null,
+        })),
+      );
+    } else {
+      setPendingRequests([]);
+    }
+  };
+
   useEffect(() => {
     loadGame();
     loadParticipants();
     loadResult();
+    loadJoinRequests();
     const ch = supabase
       .channel(`game-${gameId}-participants`)
       .on(
@@ -289,6 +348,12 @@ function GamePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
+
+  // Перезагружаем заявки когда юзер появляется (после логина) или меняется игра.
+  useEffect(() => {
+    loadJoinRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, gameId]);
 
   useEffect(() => {
     if (game?.organizer_id) loadOrganizer(game.organizer_id);
@@ -417,6 +482,53 @@ function GamePage() {
     toast.info("Ты вышел из команды");
     // Локально убираем себя из списка — realtime подтянет в фоне.
     setParticipants((prev) => prev.filter((p) => p.user_id !== user.id));
+  };
+
+  // Подача заявки на участие. Сообщение опционально (можно вызвать с null).
+  const requestJoin = async (message: string | null) => {
+    if (!user) {
+      navigate({ to: "/auth" });
+      return;
+    }
+    if (!game) return;
+    setJoining(true);
+    const { error } = await supabase.rpc("request_join", {
+      p_game_id: game.id,
+      p_message: message,
+    });
+    setJoining(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Заявка отправлена. Жди подтверждения организатора.");
+    loadJoinRequests();
+  };
+
+  // Одобрить заявку (для организатора). После approve игрок появится в составе.
+  const approveRequest = async (requestId: string) => {
+    const { error } = await supabase.rpc("approve_join", { p_request_id: requestId });
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Игрок добавлен в состав");
+    loadJoinRequests();
+    loadParticipants();
+  };
+
+  // Отклонить заявку (для организатора). reason опционален, попадёт в уведомление автору.
+  const rejectRequest = async (requestId: string, reason: string | null) => {
+    const { error } = await supabase.rpc("reject_join", {
+      p_request_id: requestId,
+      p_reason: reason,
+    });
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.info("Заявка отклонена");
+    loadJoinRequests();
   };
 
   if (loading) {
@@ -599,6 +711,17 @@ function GamePage() {
                 </div>
               )}
             </div>
+
+            {/* Блок «Заявки на участие» — показываем только организатору живой игры
+                с requires_approval и хотя бы одной pending-заявкой. */}
+            {isOrganizer && !isArchived && game.requires_approval && pendingRequests.length > 0 && (
+              <JoinRequestsList
+                requests={pendingRequests}
+                onApprove={approveRequest}
+                onReject={rejectRequest}
+                full={full}
+              />
+            )}
 
             <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
               <h2 className="font-display text-xl font-bold">Команда</h2>
@@ -848,6 +971,13 @@ function GamePage() {
                 <Button asChild size="lg" variant="outline" className="mt-6 w-full">
                   <Link to="/games">Вернуться к каталогу</Link>
                 </Button>
+              ) : game.requires_approval ? (
+                <JoinRequestPanel
+                  myRequest={myRequest}
+                  full={full}
+                  onRequest={requestJoin}
+                  busy={joining}
+                />
               ) : (
                 <Button
                   onClick={join}
@@ -912,6 +1042,21 @@ function GamePage() {
             <Button asChild size="lg" variant="outline">
               <Link to="/games">К каталогу</Link>
             </Button>
+          ) : game.requires_approval ? (
+            myRequest?.status === "pending" ? (
+              <Button disabled size="lg" variant="outline" className="gap-1">
+                <Clock className="h-4 w-4" /> На рассмотрении
+              </Button>
+            ) : (
+              <Button
+                onClick={() => requestJoin(null)}
+                disabled={joining || full}
+                size="lg"
+                className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+              >
+                {full ? "Мест нет" : "Подать заявку"}
+              </Button>
+            )
           ) : (
             <Button
               onClick={join}
@@ -1343,6 +1488,7 @@ function EditGameButton({
   const [timeEnd, setTimeEnd] = useState<string>(toTimeStr(initialEnd));
   const [description, setDescription] = useState<string>(game.description ?? "");
   const [isPrivate, setIsPrivate] = useState<boolean>(game.is_private);
+  const [requiresApproval, setRequiresApproval] = useState<boolean>(game.requires_approval);
   // Если у игры был rent_total — это split-режим. Иначе fixed.
   const [payMode, setPayMode] = useState<"split" | "fixed">(
     game.rent_total != null ? "split" : "fixed",
@@ -1362,6 +1508,7 @@ function EditGameButton({
     setTimeEnd(toTimeStr(new Date(game.ends_at)));
     setDescription(game.description ?? "");
     setIsPrivate(game.is_private);
+    setRequiresApproval(game.requires_approval);
     setPayMode(game.rent_total != null ? "split" : "fixed");
     setRentTotal(game.rent_total != null ? String(game.rent_total) : String(game.price_per_player * game.slots_total));
     setFixedPrice(String(game.price_per_player));
@@ -1406,6 +1553,7 @@ function EditGameButton({
         ends_at: ends.toISOString(),
         description: description.trim() || null,
         is_private: isPrivate,
+        requires_approval: requiresApproval,
         price_per_player: computedPrice,
         // Сохраняем rent_total только в split-режиме; в fixed обнуляем.
         rent_total: payMode === "split" ? rentNum : null,
@@ -1586,6 +1734,22 @@ function EditGameButton({
                 </p>
               </div>
             </label>
+
+            {/* Аппрув заявок */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+              <input
+                type="checkbox"
+                checked={requiresApproval}
+                onChange={(e) => setRequiresApproval(e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <div className="text-sm">
+                <p className="font-medium">Принимать игроков по заявкам</p>
+                <p className="text-xs text-muted-foreground">
+                  Игроки видят кнопку «Подать заявку». Ты подтверждаешь — попадают в состав. Уже записанных это не затрагивает.
+                </p>
+              </div>
+            </label>
           </div>
 
           <DialogFooter>
@@ -1635,39 +1799,40 @@ function GameResultSummary({
   const mvp = stats.find((s) => s.is_mvp);
 
   return (
-    <div className="rounded-3xl border border-amber-500/40 bg-gradient-to-br from-amber-500/5 via-card to-card p-6 shadow-elegant">
-      <div className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">
-        <Trophy className="h-4 w-4" /> Игра завершена
+    <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-500/5 via-card to-card p-4 shadow-elegant sm:rounded-3xl sm:p-6">
+      <div className="flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-amber-600 sm:text-xs dark:text-amber-400">
+        <Trophy className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Игра завершена
       </div>
-      <div className="mt-4 flex items-baseline justify-center gap-4">
-        <span className="font-display text-5xl font-bold tabular-nums">{result.score_team_a}</span>
-        <span className="font-display text-3xl font-bold text-muted-foreground">:</span>
-        <span className="font-display text-5xl font-bold tabular-nums">{result.score_team_b}</span>
+      <div className="mt-3 flex items-baseline justify-center gap-3 sm:mt-4 sm:gap-4">
+        <span className="font-display text-4xl font-bold tabular-nums sm:text-5xl">{result.score_team_a}</span>
+        <span className="font-display text-2xl font-bold text-muted-foreground sm:text-3xl">:</span>
+        <span className="font-display text-4xl font-bold tabular-nums sm:text-5xl">{result.score_team_b}</span>
       </div>
       {mvp && (
-        <p className="mt-4 text-center text-sm">
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-700 dark:text-amber-300">
-            <Star className="h-3.5 w-3.5 fill-current" /> MVP · {labelOf(mvp.user_id)}
+        <p className="mt-3 text-center text-xs sm:mt-4 sm:text-sm">
+          <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-amber-500/15 px-2.5 py-1 font-semibold text-amber-700 sm:px-3 dark:text-amber-300">
+            <Star className="h-3 w-3 shrink-0 fill-current sm:h-3.5 sm:w-3.5" />
+            <span className="truncate">MVP · {labelOf(mvp.user_id)}</span>
           </span>
         </p>
       )}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:mt-6 sm:gap-4 md:grid-cols-2">
         <ResultTeam label="Команда A" players={teamA} labelOf={labelOf} />
         <ResultTeam label="Команда B" players={teamB} labelOf={labelOf} />
       </div>
       {unassigned.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-3 sm:mt-4">
           <ResultTeam label="Без команды" players={unassigned} labelOf={labelOf} />
         </div>
       )}
 
       {result.notes && (
-        <p className="mt-4 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-muted-foreground">
+        <p className="mt-3 break-words rounded-xl border border-border bg-background/40 px-3 py-2 text-xs text-muted-foreground sm:mt-4 sm:text-sm">
           «{result.notes}»
         </p>
       )}
-      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+      <p className="mt-3 text-center text-[10px] text-muted-foreground sm:text-[11px]">
         Зафиксировано {new Date(result.finalized_at).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}
       </p>
     </div>
@@ -1979,6 +2144,267 @@ function FinalizeGameButton({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Панель для не-участника на странице игры с requires_approval.
+ * 4 состояния:
+ *   - заявки нет → кнопка «Подать заявку» с диалогом сообщения
+ *   - pending → плашка «На рассмотрении»
+ *   - rejected → плашка с причиной + кнопка «Подать ещё раз»
+ *   - approved → не показывается (юзер уже в участниках)
+ */
+function JoinRequestPanel({
+  myRequest,
+  full,
+  onRequest,
+  busy,
+}: {
+  myRequest: JoinRequest | null;
+  full: boolean;
+  onRequest: (message: string | null) => Promise<void>;
+  busy: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const submit = async () => {
+    await onRequest(message.trim() || null);
+    setOpen(false);
+    setMessage("");
+  };
+
+  if (myRequest?.status === "pending") {
+    return (
+      <div className="mt-6 flex items-center justify-center gap-2 rounded-md bg-amber-500/10 px-3 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
+        <Clock className="h-4 w-4" /> Заявка на рассмотрении
+      </div>
+    );
+  }
+  if (myRequest?.status === "rejected") {
+    return (
+      <div className="mt-6 space-y-2">
+        <div className="rounded-md bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
+          <p className="font-semibold">Заявка отклонена</p>
+          {myRequest.reject_reason && (
+            <p className="mt-1 text-xs opacity-80">«{myRequest.reject_reason}»</p>
+          )}
+        </div>
+        <Button
+          onClick={() => setOpen(true)}
+          disabled={busy || full}
+          size="lg"
+          className="w-full bg-gradient-brand text-primary-foreground hover:opacity-90"
+        >
+          {full ? "Мест нет" : "Подать ещё раз"}
+        </Button>
+        <RequestDialog open={open} setOpen={setOpen} message={message} setMessage={setMessage} submit={submit} busy={busy} />
+      </div>
+    );
+  }
+  return (
+    <>
+      <Button
+        onClick={() => setOpen(true)}
+        disabled={busy || full}
+        size="lg"
+        className="mt-6 w-full bg-gradient-brand text-primary-foreground hover:opacity-90"
+      >
+        {full ? "Мест нет" : "Подать заявку"}
+      </Button>
+      <p className="mt-2 text-center text-xs text-muted-foreground">
+        Игра по аппруву — организатор подтверждает каждого игрока
+      </p>
+      <RequestDialog open={open} setOpen={setOpen} message={message} setMessage={setMessage} submit={submit} busy={busy} />
+    </>
+  );
+}
+
+function RequestDialog({
+  open,
+  setOpen,
+  message,
+  setMessage,
+  submit,
+  busy,
+}: {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  message: string;
+  setMessage: (v: string) => void;
+  submit: () => Promise<void>;
+  busy: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Заявка на участие</DialogTitle>
+          <DialogDescription>
+            Напиши пару слов о себе, если хочешь — это поможет организатору решить быстрее. Поле не обязательное.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2">
+          <Textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value.slice(0, 280))}
+            placeholder='Например: "Играю на позиции защитника, опыт 3 года"'
+            className="min-h-24"
+            maxLength={280}
+          />
+          <p className="mt-1 text-right text-[11px] text-muted-foreground">{message.length}/280</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+            Отмена
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={busy}
+            className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Отправить"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Список pending-заявок для организатора. Кнопки Approve/Reject.
+ * Reject открывает мини-диалог для опционального текста причины.
+ */
+function JoinRequestsList({
+  requests,
+  onApprove,
+  onReject,
+  full,
+}: {
+  requests: JoinRequest[];
+  onApprove: (id: string) => Promise<void>;
+  onReject: (id: string, reason: string | null) => Promise<void>;
+  full: boolean;
+}) {
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const handleApprove = async (id: string) => {
+    setBusy(id);
+    await onApprove(id);
+    setBusy(null);
+  };
+  const handleReject = async () => {
+    if (!rejectingId) return;
+    setBusy(rejectingId);
+    await onReject(rejectingId, reason.trim() || null);
+    setBusy(null);
+    setRejectingId(null);
+    setReason("");
+  };
+
+  return (
+    <div className="rounded-3xl border border-amber-500/40 bg-amber-500/5 p-4 shadow-card sm:p-6">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-lg font-bold sm:text-xl">
+          Заявки на участие
+        </h2>
+        <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+          {requests.length}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Подтверди игроков — после approve они появятся в составе.
+      </p>
+      <ul className="mt-4 space-y-3">
+        {requests.map((r) => {
+          const name = r.profile?.display_name ?? r.profile?.username ?? "Игрок";
+          return (
+            <li
+              key={r.id}
+              className="rounded-2xl border border-border bg-background p-3"
+            >
+              <div className="flex items-start gap-3">
+                <Avatar className="h-10 w-10 shrink-0">
+                  <AvatarImage src={r.profile?.avatar_url ?? undefined} />
+                  <AvatarFallback>{initials(name)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  {r.profile?.username ? (
+                    <Link
+                      to="/u/$username"
+                      params={{ username: r.profile.username }}
+                      className="block truncate text-sm font-semibold hover:underline"
+                    >
+                      {name}
+                    </Link>
+                  ) : (
+                    <span className="block truncate text-sm font-semibold">{name}</span>
+                  )}
+                  {r.message && (
+                    <p className="mt-1 break-words text-xs text-muted-foreground">«{r.message}»</p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRejectingId(r.id);
+                    setReason("");
+                  }}
+                  disabled={busy === r.id}
+                >
+                  Отклонить
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleApprove(r.id)}
+                  disabled={busy === r.id || full}
+                  className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+                >
+                  {busy === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Принять"}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {full && (
+        <p className="mt-3 rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
+          Состав уже собран — принять новых нельзя. Освободи слот, отчислив кого-то, или увеличь количество мест.
+        </p>
+      )}
+
+      <Dialog open={!!rejectingId} onOpenChange={(o) => !o && setRejectingId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Отклонить заявку</DialogTitle>
+            <DialogDescription>
+              Можно написать короткую причину — она придёт игроку в уведомлении. Поле необязательное.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, 280))}
+            placeholder="Например: уровень не подходит"
+            className="min-h-20"
+            maxLength={280}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectingId(null)} disabled={!!busy}>
+              Отмена
+            </Button>
+            <Button onClick={handleReject} disabled={!!busy} variant="destructive">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Отклонить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

@@ -32,8 +32,8 @@ Private Key: ts3… (43 символа, base64url)
 ### Сервер (Supabase → Project Settings → Edge Functions → Secrets)
 
 ```bash
-supabase secrets set VAPID_PUBLIC_KEY="<Public Key>"
-supabase secrets set VAPID_PRIVATE_KEY="<Private Key>"
+supabase secrets set VAPID_PUBLIC_KEY="BFvvsczupLxZAELn3LAIJbxtUR4U2fHh6NZQJZYTjv9iJAZxkF6MCgVq16pvXxX2XQqQmjWn53xBOjhPa4im6Y8"
+supabase secrets set VAPID_PRIVATE_KEY="AfK62vFViFnYgfOP5BxmplhuDNIx-MGViiPmm2UZzHY"
 supabase secrets set VAPID_SUBJECT="mailto:admin@af-sport.ru"
 ```
 

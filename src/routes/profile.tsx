@@ -48,6 +48,17 @@ interface GameItem {
   stadium: { name: string; address: string } | null;
 }
 
+// Лёгкая сводка по сыгранному матчу для отображения в карточке истории.
+// Подгружается только для архивных игр (где есть game_results).
+interface PastGameResult {
+  score_a: number;
+  score_b: number;
+  team: "A" | "B" | null;
+  goals: number;
+  assists: number;
+  is_mvp: boolean;
+}
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("ru-RU", {
     weekday: "short",
@@ -75,6 +86,8 @@ function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [upcoming, setUpcoming] = useState<GameItem[]>([]);
   const [past, setPast] = useState<GameItem[]>([]);
+  // Счёт + личная статистика игрока для архивных игр. Ключ — game_id.
+  const [pastResults, setPastResults] = useState<Record<string, PastGameResult>>({});
   // Сколько матчей пользователь сам организовал и они уже завершились.
   const [organizedCount, setOrganizedCount] = useState<number>(0);
   const [ratings, setRatings] = useState<{ id: string; rater_id: string; score: number; comment: string | null; created_at: string }[]>([]);
@@ -103,11 +116,48 @@ function ProfilePage() {
           .filter((g) => new Date(g.starts_at).getTime() >= now)
           .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))
       );
-      setPast(
-        games
-          .filter((g) => new Date(g.ends_at).getTime() < now)
-          .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at))
-      );
+      const pastList = games
+        .filter((g) => new Date(g.ends_at).getTime() < now)
+        .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at));
+      setPast(pastList);
+
+      // Подгружаем итоги архивных игр одной пачкой — счёт + личная статистика игрока.
+      // Игры без game_results просто не попадут в мапу и в карточке покажется
+      // дата без счёта (организатор не финализировал).
+      if (pastList.length > 0) {
+        const ids = pastList.map((g) => g.id);
+        const [{ data: rs }, { data: ss }] = await Promise.all([
+          supabase
+            .from("game_results")
+            .select("game_id, score_team_a, score_team_b")
+            .in("game_id", ids),
+          supabase
+            .from("game_player_stats")
+            .select("game_id, team, goals, assists, is_mvp")
+            .in("game_id", ids)
+            .eq("user_id", user.id),
+        ]);
+        const map: Record<string, PastGameResult> = {};
+        (rs ?? []).forEach((r) => {
+          map[r.game_id] = {
+            score_a: r.score_team_a,
+            score_b: r.score_team_b,
+            team: null,
+            goals: 0,
+            assists: 0,
+            is_mvp: false,
+          };
+        });
+        (ss ?? []).forEach((s) => {
+          const entry = map[s.game_id];
+          if (!entry) return; // личная стата без результата — пропускаем
+          entry.team = s.team as "A" | "B" | null;
+          entry.goals = s.goals ?? 0;
+          entry.assists = s.assists ?? 0;
+          entry.is_mvp = !!s.is_mvp;
+        });
+        setPastResults(map);
+      }
 
       // Сколько игр пользователь сам создал и довёл до конца (ends_at < now).
       // Это «организовал успешных матчей» — показываем в метриках.
@@ -511,7 +561,13 @@ function ProfilePage() {
           {user && <MediaSection userId={user.id} isOwner />}
           {user && <GoalsSection userId={user.id} pastGames={past} />}
           <HistorySection title="Предстоящие игры" empty="Нет записанных игр" items={upcoming} />
-          <HistorySection title="История игр" empty="Сыгранных игр пока нет" items={past} muted />
+          <HistorySection
+            title="История игр"
+            empty="Сыгранных игр пока нет"
+            items={past}
+            muted
+            results={pastResults}
+          />
         </div>
       </section>
       {FEATURES.PHONE_VERIFICATION && user && isValidRuPhone(profile.phone) && (
@@ -1244,11 +1300,15 @@ function HistorySection({
   items,
   empty,
   muted,
+  results,
 }: {
   title: string;
   items: GameItem[];
   empty: string;
   muted?: boolean;
+  // Если передано — для каждой игры из items с архивным результатом
+  // показываем счёт, личную стату и MVP-плашку.
+  results?: Record<string, PastGameResult>;
 }) {
   return (
     <div>
@@ -1257,27 +1317,76 @@ function HistorySection({
         <p className="mt-3 text-sm text-muted-foreground">{empty}</p>
       ) : (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {items.map((g) => (
-            <Link
-              key={g.id}
-              to="/games/$gameId"
-              params={{ gameId: g.id }}
-              className={`rounded-2xl border border-border bg-card p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-elegant ${
-                muted ? "opacity-80" : ""
-              }`}
-            >
-              <Badge variant="secondary" className="bg-accent text-accent-foreground">
-                {g.sport}
-              </Badge>
-              <h3 className="mt-3 font-display text-base font-semibold">{g.stadium?.name}</h3>
-              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPin className="h-3 w-3" /> {g.stadium?.address}
-              </p>
-              <p className="mt-3 flex items-center gap-2 text-sm">
-                <Calendar className="h-4 w-4 text-primary" /> {fmtDate(g.starts_at)}
-              </p>
-            </Link>
-          ))}
+          {items.map((g) => {
+            const r = results?.[g.id];
+            // Определяем результат матча для игрока: победа / ничья / поражение / без счёта.
+            // Если игрок не был приписан к команде, окрас «нейтральный».
+            let outcome: "win" | "loss" | "draw" | null = null;
+            if (r && r.team) {
+              const my = r.team === "A" ? r.score_a : r.score_b;
+              const opp = r.team === "A" ? r.score_b : r.score_a;
+              outcome = my > opp ? "win" : my < opp ? "loss" : "draw";
+            } else if (r) {
+              outcome = r.score_a === r.score_b ? "draw" : null;
+            }
+            const scoreClass =
+              outcome === "win"
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                : outcome === "loss"
+                ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+                : outcome === "draw"
+                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                : "bg-muted text-muted-foreground";
+            return (
+              <Link
+                key={g.id}
+                to="/games/$gameId"
+                params={{ gameId: g.id }}
+                className={`rounded-2xl border border-border bg-card p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-elegant sm:p-5 ${
+                  muted ? "opacity-80" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <Badge variant="secondary" className="bg-accent text-accent-foreground">
+                    {g.sport}
+                  </Badge>
+                  {r && (
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-xs font-bold tabular-nums ${scoreClass}`}
+                    >
+                      {r.score_a}:{r.score_b}
+                    </span>
+                  )}
+                </div>
+                <h3 className="mt-3 font-display text-base font-semibold">{g.stadium?.name}</h3>
+                <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                  <MapPin className="h-3 w-3" /> {g.stadium?.address}
+                </p>
+                <p className="mt-3 flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4 text-primary" /> {fmtDate(g.starts_at)}
+                </p>
+                {r && (r.goals > 0 || r.assists > 0 || r.is_mvp) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2 text-xs">
+                    {r.is_mvp && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-700 dark:text-amber-300">
+                        <Star className="h-3 w-3 fill-current" /> MVP
+                      </span>
+                    )}
+                    {r.goals > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-mono font-semibold text-primary">
+                        ⚽ {r.goals}
+                      </span>
+                    )}
+                    {r.assists > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono font-semibold text-muted-foreground">
+                        🅰 {r.assists}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
