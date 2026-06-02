@@ -265,17 +265,23 @@ export function GameDraft({
         />
       )}
 
-      {/* Тестовая кнопка для разработки — видна только организатору и только в idle. */}
+      {/* Тестовый режим для разработки — видим только организатору в idle.
+          Две кнопки:
+            1) Засеять фейковых игроков с paid=true (для тестов драфта без 10 окон).
+            2) Запустить драфт сразу, минуя предложение/одобрение. */}
       {phase === "idle" && isOrganizer && (
-        <div className="border-t border-dashed border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs">
+        <div className="space-y-2 border-t border-dashed border-amber-500/40 bg-amber-500/5 px-4 py-3 text-xs">
+          <p className="font-semibold text-amber-700 dark:text-amber-300">
+            <Zap className="mr-1 inline h-3 w-3" /> Режим разработчика
+          </p>
+          <SeedTestPlayersButton gameId={gameId} slotsTotal={slotsTotal} participantsCount={participants.length} />
           <button
             type="button"
             onClick={startTest}
             disabled={busy || participants.length < 2}
-            className="inline-flex items-center gap-1 font-semibold text-amber-700 disabled:opacity-50 dark:text-amber-300"
+            className="block text-left font-medium text-amber-700 hover:underline disabled:opacity-50 dark:text-amber-300"
           >
-            <Zap className="h-3 w-3" />
-            Тестовый режим: запустить драфт с первыми двумя участниками
+            ▶ Запустить драфт с первыми двумя как кэпы
           </button>
         </div>
       )}
@@ -975,6 +981,79 @@ function CaptainPicker({
           })}
         </ul>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Дев-кнопка: одним кликом создаёт N фейковых auth.users + profiles +
+ * INSERT в game_participants с paid=true, чтобы тестить драфт одним аккаунтом.
+ * RPC seed_test_participants проверяет, что вызывает организатор.
+ * Очистка: cleanup_test_users (отдельная маленькая кнопка).
+ */
+function SeedTestPlayersButton({
+  gameId,
+  slotsTotal,
+  participantsCount,
+}: {
+  gameId: string;
+  slotsTotal: number;
+  participantsCount: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const needed = Math.max(0, slotsTotal - participantsCount);
+
+  const seed = async () => {
+    if (needed <= 0) {
+      toast.info("Состав уже заполнен");
+      return;
+    }
+    setBusy(true);
+    const { data, error } = await supabase.rpc("seed_test_participants", {
+      p_game_id: gameId,
+      p_count: needed,
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    const seeded = (data as { seeded?: number } | null)?.seeded ?? 0;
+    toast.success(`Засеяно тестовых игроков: ${seeded}`);
+  };
+
+  const cleanup = async () => {
+    if (!confirm("Удалить ВСЕХ тестовых юзеров? (у которых email *@af-sport.local)")) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("cleanup_test_users");
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    const deleted = (data as { deleted?: number } | null)?.deleted ?? 0;
+    toast.info(`Удалено тестовых юзеров: ${deleted}`);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={seed}
+        disabled={busy || needed <= 0}
+        className="font-medium text-amber-700 hover:underline disabled:opacity-50 dark:text-amber-300"
+      >
+        ▶ Засеять {needed} тестовых игроков (paid=true)
+      </button>
+      <span className="text-muted-foreground">·</span>
+      <button
+        type="button"
+        onClick={cleanup}
+        disabled={busy}
+        className="text-muted-foreground hover:underline disabled:opacity-50"
+      >
+        Очистить всех тестовых
+      </button>
     </div>
   );
 }

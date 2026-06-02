@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import { FormationPreview } from "@/components/game/FormationPreview";
 import {
   Select,
   SelectContent,
@@ -239,7 +240,17 @@ function CreateGamePage() {
                   <span className="font-display text-lg font-bold">{players[0]}</span>
                 </div>
                 <Slider value={players} onValueChange={setPlayers} min={4} max={22} step={1} className="mt-3" />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Это общее количество, поделим пополам — по {Math.floor(players[0] / 2)} человек в команде
+                </p>
               </div>
+
+              {/* Превью формации команды — только футбол, размер /2. */}
+              {sport === "Футбол" && (
+                <div className="mt-4">
+                  <FormationPreview size={Math.floor(players[0] / 2)} sport={sport} />
+                </div>
+              )}
               <div className="mt-6">
                 <Label>Комментарий (необязательно)</Label>
                 <Textarea
