@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { GameDraft } from "@/components/game/GameDraft";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -138,6 +139,9 @@ function GamePage() {
   const [myRequest, setMyRequest] = useState<JoinRequest | null>(null);
   // Pending-заявки для организатора со склейкой профилей.
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
+  // Статус драфта расстановки — когда active/completed, флипаем «Команду»
+  // на отрисовку футбольного поля внутри GameDraft.
+  const [draftStatus, setDraftStatus] = useState<"pending" | "active" | "completed" | "cancelled" | null>(null);
   // Доступ через invite — карточка видна, но без чата/деталей участников.
   const [viaInvite, setViaInvite] = useState(false);
   const [organizer, setOrganizer] = useState<{
@@ -352,6 +356,35 @@ function GamePage() {
     loadJoinRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, gameId]);
+
+  // Лёгкая подписка только на статус драфта — этого достаточно чтобы
+  // флипать список «Команда» в режим поля. Сам контент драфта (slots, captains)
+  // ведёт компонент GameDraft через свою подписку.
+  useEffect(() => {
+    let alive = true;
+    const fetchStatus = async () => {
+      const { data } = await supabase
+        .from("game_drafts")
+        .select("status")
+        .eq("game_id", gameId)
+        .maybeSingle();
+      if (!alive) return;
+      setDraftStatus((data?.status as typeof draftStatus) ?? null);
+    };
+    fetchStatus();
+    const ch = supabase
+      .channel(`draft-status-${gameId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_drafts", filter: `game_id=eq.${gameId}` },
+        () => fetchStatus(),
+      )
+      .subscribe();
+    return () => {
+      alive = false;
+      supabase.removeChannel(ch);
+    };
+  }, [gameId]);
 
   useEffect(() => {
     if (game?.organizer_id) loadOrganizer(game.organizer_id);
@@ -725,6 +758,27 @@ function GamePage() {
               />
             )}
 
+            {/* Драфт расстановки. Сам компонент решает, что рисовать (idle/pending/active/completed). */}
+            {!isArchived && user && participants.length > 0 && (
+              <GameDraft
+                gameId={game.id}
+                currentUserId={user.id}
+                isOrganizer={isOrganizer}
+                participants={participants.map((p) => ({
+                  user_id: p.user_id,
+                  paid: p.paid,
+                  profile: p.profile,
+                }))}
+                slotsTotal={game.slots_total}
+                allPaid={full && paidCount >= game.slots_total}
+                isArchived={isArchived}
+                gameStarted={new Date(game.starts_at).getTime() <= Date.now()}
+              />
+            )}
+
+            {/* Когда драфт активен/закончен — прячем обычный список «Команда»:
+                поле уже отрисовано внутри GameDraft. */}
+            {!(draftStatus === "active" || draftStatus === "completed") && (
             <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
               <h2 className="font-display text-xl font-bold">Команда</h2>
               <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -766,9 +820,14 @@ function GamePage() {
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <div className="relative shrink-0">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-brand font-display text-sm font-bold text-primary-foreground">
-                            {(p.profile?.display_name ?? p.profile?.username ?? "?").slice(0, 1).toUpperCase()}
-                          </div>
+                          {/* Раньше тут был просто div с инициалом — avatar_url подгружался,
+                              но не отображался. Теперь — обычный Avatar с фолбэком. */}
+                          <Avatar className="h-10 w-10 rounded-2xl">
+                            <AvatarImage src={p.profile?.avatar_url ?? undefined} />
+                            <AvatarFallback className="rounded-2xl bg-gradient-brand font-display text-sm font-bold text-primary-foreground">
+                              {(p.profile?.display_name ?? p.profile?.username ?? "?").slice(0, 1).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
                           {isAdmin && (
                             <span
                               className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm"
@@ -848,6 +907,7 @@ function GamePage() {
                 ))}
               </ul>
             </div>
+            )}
 
             {organizer && (
               <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
