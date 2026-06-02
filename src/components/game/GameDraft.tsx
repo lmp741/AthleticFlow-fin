@@ -71,6 +71,7 @@ export function GameDraft({
   allPaid,
   isArchived,
   gameStarted,
+  onStatusChange,
 }: {
   gameId: string;
   currentUserId: string | null;
@@ -80,6 +81,7 @@ export function GameDraft({
   allPaid: boolean;
   isArchived: boolean;
   gameStarted: boolean;
+  onStatusChange?: (status: "pending" | "active" | "completed" | "cancelled" | null) => void;
 }) {
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [captains, setCaptains] = useState<CaptainRow[]>([]);
@@ -92,9 +94,13 @@ export function GameDraft({
       supabase.from("game_drafts").select("*").eq("game_id", gameId).maybeSingle(),
       supabase.from("game_captains").select("team, user_id").eq("game_id", gameId),
     ]);
-    setDraft((d as DraftRow | null) ?? null);
+    const row = (d as DraftRow | null) ?? null;
+    setDraft(row);
     setCaptains(((c as CaptainRow[]) ?? []));
-  }, [gameId]);
+    // Уведомляем родителя о смене статуса — без этого блок «Команда» не флипнется
+    // в режим поля, пока пользователь не обновит страницу.
+    onStatusChange?.(row?.status ?? null);
+  }, [gameId, onStatusChange]);
 
   useEffect(() => {
     load();
@@ -135,6 +141,9 @@ export function GameDraft({
   }, [participants]);
 
   // ---- Действия ----
+  // ВАЖНО: после каждого RPC явно дёргаем load(), не доверяя только realtime.
+  // Realtime publication может быть отключён в Supabase Dashboard, и тогда подписка
+  // молчит. Оптимистичный re-fetch — гарант что UI обновится сразу после клика.
   const propose = async (force: boolean) => {
     setBusy(true);
     const { error } = await supabase.rpc("propose_draft", { p_game_id: gameId, p_force: force });
@@ -144,6 +153,7 @@ export function GameDraft({
       return;
     }
     toast.success("Предложение отправлено — ждём подтверждения");
+    load();
   };
 
   const accept = async () => {
@@ -157,6 +167,7 @@ export function GameDraft({
     const allIn = (data as { all_in?: boolean } | null)?.all_in;
     if (allIn) toast.success("Драфт начался!");
     else toast.info("Подтвердил. Ждём остальных.");
+    load();
   };
 
   const cancel = async () => {
@@ -165,6 +176,7 @@ export function GameDraft({
     const { error } = await supabase.rpc("cancel_draft", { p_game_id: gameId });
     setBusy(false);
     if (error) toast.error(error.message);
+    load();
   };
 
   const startTest = async () => {
@@ -186,6 +198,7 @@ export function GameDraft({
       return;
     }
     toast.success("Тестовый драфт запущен");
+    load();
   };
 
   // ---- Рендер по фазам ----
@@ -248,6 +261,7 @@ export function GameDraft({
           onCancel={cancel}
           busy={busy}
           gameId={gameId}
+          onChanged={load}
         />
       )}
 
@@ -273,6 +287,7 @@ export function GameDraft({
         participants={participants}
         currentCapA={capA?.user_id ?? null}
         currentCapB={capB?.user_id ?? null}
+        onSaved={load}
       />
     </div>
   );
@@ -470,6 +485,7 @@ function DraftBoard({
   onCancel,
   busy,
   gameId,
+  onChanged,
 }: {
   draft: DraftRow;
   participants: DraftParticipant[];
@@ -481,6 +497,7 @@ function DraftBoard({
   onCancel: () => void;
   busy: boolean;
   gameId: string;
+  onChanged?: () => void;
 }) {
   // Драг-н-дроп: «активный игрок» = тот, кого тянем.
   const [drag, setDrag] = useState<{ playerId: string; x: number; y: number } | null>(null);
@@ -535,9 +552,14 @@ function DraftBoard({
         p_slot_id: best.id,
         p_player_id: playerId,
       });
-      if (error) toast.error(error.message);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      // Оптимистично перезапросим состояние (realtime может опаздывать).
+      onChanged?.();
     },
-    [draft.slots, gameId, myTeam, myTurn],
+    [draft.slots, gameId, myTeam, myTurn, onChanged],
   );
 
   const unpick = async (slotId: string) => {
@@ -545,7 +567,11 @@ function DraftBoard({
     const slot = draft.slots.find((s) => s.id === slotId);
     if (!slot || slot.team !== myTeam || !slot.player_id) return;
     const { error } = await supabase.rpc("unpick_slot", { p_game_id: gameId, p_slot_id: slotId });
-    if (error) toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    onChanged?.();
   };
 
   // Стартуем перетаскивание (pointer events работают и на тач, и на мыши).
@@ -807,6 +833,7 @@ function AssignCaptainsDialog({
   participants,
   currentCapA,
   currentCapB,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -814,6 +841,7 @@ function AssignCaptainsDialog({
   participants: DraftParticipant[];
   currentCapA: string | null;
   currentCapB: string | null;
+  onSaved?: () => void;
 }) {
   const [a, setA] = useState<string | null>(currentCapA);
   const [b, setB] = useState<string | null>(currentCapB);
@@ -845,6 +873,7 @@ function AssignCaptainsDialog({
     setBusy(false);
     toast.success("Капитаны сохранены");
     onOpenChange(false);
+    onSaved?.();
   };
 
   return (

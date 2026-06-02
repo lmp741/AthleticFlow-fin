@@ -773,6 +773,7 @@ function GamePage() {
                 allPaid={full && paidCount >= game.slots_total}
                 isArchived={isArchived}
                 gameStarted={new Date(game.starts_at).getTime() <= Date.now()}
+                onStatusChange={setDraftStatus}
               />
             )}
 
