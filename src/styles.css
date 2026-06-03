@@ -4,6 +4,19 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Глобально убираем стрелки-спиннеры из <input type="number">.
+   В формах создания/редактирования игры они только отвлекают и плохо
+   масштабируются на тач-устройствах. Пользователь сам набирает цифры. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Athletic Flow design system — light theme inspired by brand presentation */
 
 @theme inline {
