@@ -71,7 +71,10 @@ function CreateGamePage() {
   const [date, setDate] = useState(todayISO());
   const [timeStart, setTimeStart] = useState("19:00");
   const [timeEnd, setTimeEnd] = useState("20:30");
-  const [players, setPlayers] = useState([10]);
+  // Слайдер хранит РАЗМЕР КОМАНДЫ (5 = "играем 5 на 5"). Общее число
+  // участников — players[0] * 2. Это привычнее футболистам и совпадает
+  // с FORMATIONS_A в FormationPreview (там size — это сколько в команде).
+  const [players, setPlayers] = useState([5]);
   const [stadiums, setStadiums] = useState<StadiumOpt[]>([]);
   const [stadiumId, setStadiumId] = useState("");
   // Модель оплаты:
@@ -107,7 +110,9 @@ function CreateGamePage() {
   // Организатор видит только цену, которую увидит игрок; распределение между
   // владельцем стадиона и сервисом — внутренний механизм.
   const COMMISSION = 0.1;
-  const slots = Math.max(1, players[0]);
+  // players[0] — это размер команды (например 5). Полное число мест — *2.
+  const teamSize = Math.max(1, players[0]);
+  const slots = teamSize * 2;
   const rentNum = Math.max(0, Number(rentTotal) || 0);
   const fixedNum = Math.max(0, Number(fixedPrice) || 0);
   const splitPrice = Math.ceil((rentNum * (1 + COMMISSION)) / slots);
@@ -130,7 +135,8 @@ function CreateGamePage() {
         level,
         starts_at,
         ends_at,
-        slots_total: players[0],
+        // В БД храним именно общее количество мест.
+        slots_total: slots,
         price_per_player: pricePerPlayer,
         // rent_total сохраняем только в split-модели — на странице игры её используем
         // для пересчёта при редактировании slots.
@@ -236,19 +242,21 @@ function CreateGamePage() {
               </div>
               <div className="mt-6">
                 <div className="flex items-center justify-between">
-                  <Label>Кол-во игроков</Label>
-                  <span className="font-display text-lg font-bold">{players[0]}</span>
+                  <Label>Формат игры</Label>
+                  <span className="font-display text-lg font-bold">
+                    {players[0]}×{players[0]}
+                  </span>
                 </div>
-                <Slider value={players} onValueChange={setPlayers} min={4} max={22} step={1} className="mt-3" />
+                <Slider value={players} onValueChange={setPlayers} min={2} max={11} step={1} className="mt-3" />
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Это общее количество, поделим пополам — по {Math.floor(players[0] / 2)} человек в команде
+                  Размер команды: {players[0]}. Всего соберём {teamSize * 2} человек.
                 </p>
               </div>
 
-              {/* Превью формации команды — только футбол, размер /2. */}
+              {/* Превью формации команды — только футбол. Размер = teamSize. */}
               {sport === "Футбол" && (
                 <div className="mt-4">
-                  <FormationPreview size={Math.floor(players[0] / 2)} sport={sport} />
+                  <FormationPreview size={teamSize} sport={sport} />
                 </div>
               )}
               <div className="mt-6">
@@ -344,7 +352,7 @@ function CreateGamePage() {
                   </div>
                   <div className="flex items-center justify-between border-t border-border pt-3">
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="h-3.5 w-3.5" /> 1/{players[0]} игроков
+                      <Users className="h-3.5 w-3.5" /> 1/{slots} игроков
                     </span>
                     <span className="font-display text-base font-bold">
                       {pricePerPlayer === 0 ? "Бесплатно" : `${pricePerPlayer} ₽`}
