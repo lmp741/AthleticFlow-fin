@@ -134,25 +134,46 @@ export function FormationPreview({ size, sport }: { size: number; sport?: string
         <span className="font-mono text-[10px] text-muted-foreground">A vs B</span>
       </div>
 
+      {/*
+        Высота превью растёт по брейкпойнтам:
+          mobile (<640): h-32 (128px)
+          sm  (≥640):    h-40 (160px)
+          md  (≥768):    h-56 (224px)
+          lg  (≥1024):   h-72 (288px)
+          xl  (≥1280):   h-80 (320px)
+        Так на ноутбучных экранах поле выглядит соразмерно высоте карточки,
+        а не узкой полоской как раньше.
+      */}
       <div
-        className="relative h-32 w-full overflow-hidden rounded-lg sm:h-36"
+        className="relative h-32 w-full overflow-hidden rounded-lg sm:h-40 md:h-56 lg:h-72 xl:h-80"
         style={{
           background: "linear-gradient(90deg, #15803d, #16a34a 50%, #15803d)",
         }}
       >
-        <div className="absolute inset-1 rounded-sm border-[1.5px] border-white/70" />
-        <div className="absolute top-1 bottom-1 left-1/2 w-px -translate-x-1/2 bg-white/70" />
-        <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-white/70" />
+        <div className="absolute inset-1 rounded-sm border-[1.5px] border-white/70 md:inset-2 md:border-2" />
+        <div className="absolute top-1 bottom-1 left-1/2 w-px -translate-x-1/2 bg-white/70 md:top-2 md:bottom-2 md:w-0.5" />
+        {/* Центральный круг — масштабируется по контейнеру */}
+        <div
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-white/70 md:border-2"
+          style={{ width: "min(20%, 120px)", aspectRatio: "1" }}
+        />
+        {/* Штрафные площади — для большего «футбольного» вида */}
+        <div
+          className="absolute left-1 top-1/2 -translate-y-1/2 border-[1.5px] border-white/60 md:left-2 md:border-2"
+          style={{ width: "11%", height: "55%" }}
+        />
+        <div
+          className="absolute right-1 top-1/2 -translate-y-1/2 border-[1.5px] border-white/60 md:right-2 md:border-2"
+          style={{ width: "11%", height: "55%" }}
+        />
 
-        {/* Команда A — левая половина (x умножаем на 50%, потому что показываем
-            только левую часть в виде квадрата под всё поле, тут поле 0..100%)
-            На самом деле x уже в координатах целого поля (0..1), используем как есть. */}
+        {/* Команда A — слева. Точки растут по брейкпойнтам. */}
         {slots.map((s, i) => {
           const cls = ROLE_COLOR[s.role] ?? "bg-blue-600";
           return (
             <div
               key={`A${i}`}
-              className={`absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-white/80 ${cls}`}
+              className={`absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-white/80 sm:h-6 sm:w-6 sm:text-[9px] md:h-8 md:w-8 md:text-[10px] md:ring-2 lg:h-10 lg:w-10 lg:text-xs ${cls}`}
               style={{ left: `${s.x * 100}%`, top: `${s.y * 100}%` }}
               title={s.role}
             >
@@ -167,7 +188,7 @@ export function FormationPreview({ size, sport }: { size: number; sport?: string
           return (
             <div
               key={`B${i}`}
-              className={`absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[8px] font-bold text-white opacity-50 ring-1 ring-white/80 ${cls}`}
+              className={`absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[8px] font-bold text-white opacity-50 ring-1 ring-white/80 sm:h-6 sm:w-6 sm:text-[9px] md:h-8 md:w-8 md:text-[10px] md:ring-2 lg:h-10 lg:w-10 lg:text-xs ${cls}`}
               style={{ left: `${(1 - s.x) * 100}%`, top: `${s.y * 100}%` }}
               title={`${s.role} (B)`}
             >
