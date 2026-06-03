@@ -337,12 +337,39 @@ function GamePage() {
     loadParticipants();
     loadResult();
     loadJoinRequests();
+    // Подписки на realtime:
+    // - game_participants → кто-то вошёл / вышел / оплатил
+    // - game_results       → организатор финализировал игру
+    // - game_player_stats  → личная стата при финализации
+    // - games              → редактирование (slots/level/время) или archived_at
+    // Все привязаны к текущему gameId, минимум 4 канала, но они дешёвые
+    // (один WS, разные подписки внутри).
     const ch = supabase
-      .channel(`game-${gameId}-participants`)
+      .channel(`game-${gameId}-live`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "game_participants", filter: `game_id=eq.${gameId}` },
-        () => loadParticipants()
+        () => loadParticipants(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_results", filter: `game_id=eq.${gameId}` },
+        () => loadResult(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_player_stats", filter: `game_id=eq.${gameId}` },
+        () => loadResult(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "games", filter: `id=eq.${gameId}` },
+        () => loadGame(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_join_requests", filter: `game_id=eq.${gameId}` },
+        () => loadJoinRequests(),
       )
       .subscribe();
     return () => {
@@ -3067,6 +3094,24 @@ function GoalClaimsBlock({
 
   useEffect(() => {
     load();
+    // Realtime на claims + approvals — партнёр одобрил мою заявку или сам
+    // подал свою → счётчик approvals и сам список обновляются без F5.
+    const ch = supabase
+      .channel(`goal-claims-${gameId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "goal_claims", filter: `game_id=eq.${gameId}` },
+        () => load(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "goal_claim_approvals" },
+        () => load(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, participants.length]);
 

@@ -315,9 +315,14 @@ function GamesPage() {
     }
   }, []);
 
+  // Загрузка каталога игр.
+  // Polling 30s + focus-refetch — то же что в index.tsx. Не realtime: на каталоге
+  // могут одновременно сидеть тысячи юзеров, 5К открытых WebSocket с подписками
+  // на games + game_participants дороже чем дешёвый периодический SELECT.
   useEffect(() => {
     if (!loc) return;
-    (async () => {
+    let alive = true;
+    const load = async () => {
       const { data, error } = await supabase
         .from("games")
         .select(
@@ -325,16 +330,43 @@ function GamesPage() {
         )
         .gte("starts_at", new Date(Date.now() - 60 * 60 * 1000).toISOString())
         .order("starts_at", { ascending: true });
+      if (!alive) return;
       if (!error && data) setGames(data as unknown as GameRow[]);
       else setGames([]);
-    })();
+    };
+    load();
+    const intId = window.setInterval(() => {
+      if (alive) load();
+    }, 30_000);
+    const onFocus = () => {
+      if (alive && document.visibilityState !== "hidden") load();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      alive = false;
+      window.clearInterval(intId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
   }, [loc]);
 
+  // Стадионы меняются админом редко — refetch только при focus, без polling.
   useEffect(() => {
-    (async () => {
+    let alive = true;
+    const load = async () => {
       const { data } = await supabase.from("stadiums").select("id,name,address,lat,lng");
-      setAllStadiums(data ?? []);
-    })();
+      if (alive) setAllStadiums(data ?? []);
+    };
+    load();
+    const onFocus = () => {
+      if (alive && document.visibilityState !== "hidden") load();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   // Public OSM-площадки — через наш бэк /api/pitches (кэш в supabase + Overpass).

@@ -507,6 +507,9 @@ function DraftBoard({
 }) {
   // Драг-н-дроп: «активный игрок» = тот, кого тянем.
   const [drag, setDrag] = useState<{ playerId: string; x: number; y: number } | null>(null);
+  // Дев-режим (только для админа): drag разрешён даже если не мой ход или не моя команда.
+  // RPC force_pick_slot обходит проверку turn_team на сервере.
+  const [forceMode, setForceMode] = useState(false);
   const slotRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pitchRef = useRef<HTMLDivElement | null>(null);
   const camRef = useRef<HTMLDivElement | null>(null);
@@ -528,21 +531,24 @@ function DraftBoard({
   const fieldH = PITCH_H * scale;
   const panX = isMobile && !overview && focusTeam === "B" ? -(PITCH_W / 2) * scale : 0;
 
-  // Кого можно тащить: только если я кэп и сейчас мой ход.
+  // Кого можно тащить: я кэп и сейчас мой ход, ЛИБО force-режим у админа.
   const myTurn = myTeam !== null && draft.turn_team === myTeam && draft.status === "active";
+  const canDrag = (myTurn || (forceMode && isOrganizer)) && draft.status === "active";
 
   // Игроки на скамейке = участники, которых ещё нет в slots.
   const placedIds = new Set(draft.slots.map((s) => s.player_id).filter(Boolean) as string[]);
   const bench = participants.filter((p) => !placedIds.has(p.user_id));
 
-  // Drop: к ближайшему свободному слоту моей команды.
+  // Drop: к ближайшему свободному слоту любой команды (в force-режиме) или своей.
   const onPlayerDrop = useCallback(
     async (playerId: string, x: number, y: number) => {
-      if (!myTurn) return;
+      if (!canDrag) return;
       let best: DraftSlot | null = null;
       let bestD = Infinity;
       draft.slots.forEach((s) => {
-        if (s.team !== myTeam || s.player_id) return;
+        if (s.player_id) return;
+        // В обычном режиме — только своя команда. В force-режиме — любая.
+        if (!forceMode && s.team !== myTeam) return;
         const el = slotRefs.current[s.id];
         if (!el) return;
         const r = el.getBoundingClientRect();
@@ -553,7 +559,10 @@ function DraftBoard({
         }
       });
       if (!best || bestD > 80) return;
-      const { error } = await supabase.rpc("pick_slot", {
+      // В force-режиме зовём force_pick_slot (организатор может тыкать любой
+      // слот), в обычном — стандартный pick_slot с проверкой turn.
+      const rpc = forceMode ? "force_pick_slot" : "pick_slot";
+      const { error } = await supabase.rpc(rpc, {
         p_game_id: gameId,
         p_slot_id: best.id,
         p_player_id: playerId,
@@ -562,10 +571,9 @@ function DraftBoard({
         toast.error(error.message);
         return;
       }
-      // Оптимистично перезапросим состояние (realtime может опаздывать).
       onChanged?.();
     },
-    [draft.slots, gameId, myTeam, myTurn, onChanged],
+    [draft.slots, gameId, myTeam, canDrag, forceMode, onChanged],
   );
 
   const unpick = async (slotId: string) => {
@@ -582,7 +590,7 @@ function DraftBoard({
 
   // Стартуем перетаскивание (pointer events работают и на тач, и на мыши).
   const startDrag = (playerId: string, e: React.PointerEvent) => {
-    if (!myTurn) return;
+    if (!canDrag) return;
     e.preventDefault();
     const move = (ev: PointerEvent) => setDrag({ playerId, x: ev.clientX, y: ev.clientY });
     const up = (ev: PointerEvent) => {
@@ -624,6 +632,20 @@ function DraftBoard({
             {overview ? "Половина" : "Обзор"}
           </Button>
         )}
+        {isOrganizer && draft.status === "active" && (
+          <button
+            type="button"
+            onClick={() => setForceMode((v) => !v)}
+            className={`h-7 rounded-full border px-2 text-[10px] font-bold uppercase tracking-wider transition ${
+              forceMode
+                ? "border-amber-500 bg-amber-500 text-white"
+                : "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+            }`}
+            title="Дев-режим: тащи игроков за обе команды"
+          >
+            <Zap className="mr-0.5 inline h-3 w-3" /> Force
+          </button>
+        )}
         {isOrganizer && (
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onCancel} disabled={busy}>
             <RotateCcw className="mr-1 h-3 w-3" /> Сбросить
@@ -631,9 +653,13 @@ function DraftBoard({
         )}
       </div>
 
-      {/* Чей ход / готово */}
+      {/* Чей ход / готово / force-режим */}
       <div className="border-b border-border bg-muted/30 px-3 py-1.5 text-center text-xs sm:px-4">
-        {draft.status === "completed" ? (
+        {forceMode ? (
+          <span className="font-semibold text-amber-700 dark:text-amber-400">
+            <Zap className="mr-1 inline h-3 w-3" /> Force-режим: ты тащишь за обе команды
+          </span>
+        ) : draft.status === "completed" ? (
           <span className="font-semibold text-emerald-700 dark:text-emerald-400">
             <Check className="mr-1 inline h-3 w-3" /> Расстановка завершена
           </span>
@@ -663,7 +689,7 @@ function DraftBoard({
           {draft.slots.map((s) => {
             const left = s.x * PITCH_W;
             const top = s.y * PITCH_H;
-            const droppable = !!drag && s.team === myTeam && !s.player_id;
+            const droppable = !!drag && (forceMode || s.team === myTeam) && !s.player_id;
             const player = s.player_id ? participantById.get(s.player_id) : null;
             return (
               <div
@@ -671,7 +697,7 @@ function DraftBoard({
                 ref={(el) => {
                   slotRefs.current[s.id] = el;
                 }}
-                onClick={() => player && s.team === myTeam && unpick(s.id)}
+                onClick={() => player && (forceMode || s.team === myTeam) && unpick(s.id)}
                 className="absolute flex items-center justify-center rounded-full transition-shadow"
                 style={{
                   left,
@@ -708,9 +734,11 @@ function DraftBoard({
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             <Users className="mr-1 inline h-3 w-3" /> Скамейка
           </p>
-          {myTurn && (
+          {canDrag && (
             <p className="text-[10px] text-muted-foreground">
-              перетащи на половину «{myTeam === "A" ? "Команды A" : "Команды B"}»
+              {forceMode
+                ? "force: тащи в любую точку"
+                : `перетащи на половину «${myTeam === "A" ? "Команды A" : "Команды B"}»`}
             </p>
           )}
         </div>
@@ -723,7 +751,7 @@ function DraftBoard({
                 key={p.user_id}
                 onPointerDown={(e) => startDrag(p.user_id, e)}
                 className={`flex shrink-0 flex-col items-center gap-1 px-1 ${
-                  myTurn ? "cursor-grab" : "cursor-default opacity-70"
+                  canDrag ? "cursor-grab" : "cursor-default opacity-70"
                 }`}
                 style={{ touchAction: "none" }}
               >

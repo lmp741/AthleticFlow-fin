@@ -94,9 +94,11 @@ function ProfilePage() {
   const [raters, setRaters] = useState<Record<string, { username: string | null; display_name: string | null; avatar_url: string | null }>>({});
   const [verifyOpen, setVerifyOpen] = useState(false);
 
-  useEffect(() => {
+  // Полная загрузка профиля и связанных данных. Вынесена в отдельную функцию,
+  // чтобы можно было перевызвать при focus-refetch (другой пользователь оставил
+  // оценку — увидим сразу, без F5).
+  const loadAll = async () => {
     if (!user) return;
-    (async () => {
       const { data } = await supabase
         .from("profiles")
         .select("display_name, avatar_url, phone, level, username, phone_verified, phone_public, numeric_id")
@@ -185,8 +187,29 @@ function ProfilePage() {
         (ps ?? []).forEach((p) => (map[p.id] = p));
         setRaters(map);
       }
-    })();
-  }, [user]);
+  };
+
+  // Первая загрузка + focus-refetch. Без realtime: страница профиля редко
+  // открыта надолго, и обновления приходят при возврате на вкладку.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const safe = () => {
+      if (alive) loadAll();
+    };
+    safe();
+    const onFocus = () => {
+      if (alive && document.visibilityState !== "hidden") safe();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const save = async () => {
     if (!user) return;

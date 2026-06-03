@@ -97,8 +97,32 @@ function MyPage() {
     setLoading(false);
   };
 
+  // Загрузка моих игр.
+  // Polling 30s + focus-refetch вместо realtime — пользователь обычно держит
+  // открытым максимум одну вкладку «Мои игры», а realtime на 5+ таблиц
+  // (games, game_participants для всех моих) был бы дороже периодического опроса.
   useEffect(() => {
-    load();
+    if (!user?.id) return;
+    let alive = true;
+    const safeLoad = async () => {
+      if (!alive) return;
+      await load();
+    };
+    safeLoad();
+    const intId = window.setInterval(() => {
+      if (alive) safeLoad();
+    }, 30_000);
+    const onFocus = () => {
+      if (alive && document.visibilityState !== "hidden") safeLoad();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      alive = false;
+      window.clearInterval(intId);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -247,7 +271,23 @@ function ParticipantsPanel({ gameId, game }: { gameId: string; game: MyGame }) {
   };
 
   useEffect(() => {
-    if (open && rows === null) load();
+    if (!open) return;
+    let alive = true;
+    // При открытии аккордеона — первый load, потом realtime на game_participants
+    // конкретной игры. Когда юзер закрывает — отписываемся, чтобы не плодить WS.
+    if (rows === null) load();
+    const ch = supabase
+      .channel(`my-participants-${gameId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_participants", filter: `game_id=eq.${gameId}` },
+        () => alive && load(),
+      )
+      .subscribe();
+    return () => {
+      alive = false;
+      supabase.removeChannel(ch);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

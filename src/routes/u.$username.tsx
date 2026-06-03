@@ -53,57 +53,78 @@ function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFoundFlag, setNotFoundFlag] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
+  // Загружаем профиль + связанные данные. Вынесено в named function чтобы
+  // вызывать ещё раз при focus-refetch — без F5 увидим новые оценки/фото/смену
+  // статуса дружбы, инициированную с другого устройства.
+  const loadProfile = async () => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url, level, phone, phone_public")
+      .ilike("username", username)
+      .maybeSingle();
+    if (!data) {
+      setNotFoundFlag(true);
+      setLoading(false);
+      return;
+    }
+    setProfile(data as ProfileRow);
+    const [{ data: rs }, { data: ms }, { data: fr }] = await Promise.all([
+      supabase
+        .from("user_ratings")
+        .select("id, rater_id, score, comment, created_at")
+        .eq("ratee_id", data.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("profile_media")
+        .select("id, url, kind, created_at")
+        .eq("user_id", data.id)
+        .order("created_at", { ascending: false }),
+      user
+        ? supabase
+            .from("friendships")
+            .select("status, requester_id, addressee_id")
+            .or(
+              `and(requester_id.eq.${user.id},addressee_id.eq.${data.id}),and(requester_id.eq.${data.id},addressee_id.eq.${user.id})`
+            )
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const list = rs ?? [];
+    setRatings(list);
+    setMedia((ms ?? []) as MediaItem[]);
+    if (fr) setFriendStatus(fr.status === "accepted" ? "accepted" : "pending");
+    else setFriendStatus("none");
+    const ids = Array.from(new Set(list.map((r) => r.rater_id)));
+    if (ids.length) {
+      const { data: ps } = await supabase
         .from("profiles")
         .select("id, username, display_name, avatar_url, level, phone, phone_public")
-        .ilike("username", username)
-        .maybeSingle();
-      if (!data) {
-        setNotFoundFlag(true);
-        setLoading(false);
-        return;
-      }
-      setProfile(data as ProfileRow);
-      const [{ data: rs }, { data: ms }, { data: fr }] = await Promise.all([
-        supabase
-          .from("user_ratings")
-          .select("id, rater_id, score, comment, created_at")
-          .eq("ratee_id", data.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("profile_media")
-          .select("id, url, kind, created_at")
-          .eq("user_id", data.id)
-          .order("created_at", { ascending: false }),
-        user
-          ? supabase
-              .from("friendships")
-              .select("status, requester_id, addressee_id")
-              .or(
-                `and(requester_id.eq.${user.id},addressee_id.eq.${data.id}),and(requester_id.eq.${data.id},addressee_id.eq.${user.id})`
-              )
-              .maybeSingle()
-          : Promise.resolve({ data: null }),
-      ]);
-      const list = rs ?? [];
-      setRatings(list);
-      setMedia((ms ?? []) as MediaItem[]);
-      if (fr) setFriendStatus(fr.status === "accepted" ? "accepted" : "pending");
-      const ids = Array.from(new Set(list.map((r) => r.rater_id)));
-      if (ids.length) {
-        const { data: ps } = await supabase
-          .from("profiles")
-          .select("id, username, display_name, avatar_url, level, phone, phone_public")
-          .in("id", ids);
-        const map: Record<string, ProfileRow> = {};
-        (ps ?? []).forEach((p) => (map[p.id] = p as ProfileRow));
-        setRaters(map);
-      }
-      setLoading(false);
-    })();
-  }, [username, user]);
+        .in("id", ids);
+      const map: Record<string, ProfileRow> = {};
+      (ps ?? []).forEach((p) => (map[p.id] = p as ProfileRow));
+      setRaters(map);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let alive = true;
+    const safe = () => {
+      if (alive) loadProfile();
+    };
+    safe();
+    const onFocus = () => {
+      if (alive && document.visibilityState !== "hidden") safe();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, user?.id]);
 
   const sendFriendRequest = async () => {
     if (!user || !profile) return;
