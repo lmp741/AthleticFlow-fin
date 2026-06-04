@@ -158,7 +158,7 @@ function CreateGamePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <SiteHeader />
 
       <section className="relative overflow-hidden bg-gradient-hero py-10 md:py-14">
@@ -175,7 +175,7 @@ function CreateGamePage() {
 
       <section className="container mx-auto px-4 sm:px-6 py-8 md:py-12">
         <form onSubmit={submit} className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
+          <div className="min-w-0 space-y-6 lg:col-span-2">
             <Card title="Вид спорта">
               <Chips items={sports} value={sport} onChange={setSport} />
             </Card>
@@ -310,7 +310,7 @@ function CreateGamePage() {
             </Card>
           </div>
 
-          <aside className="space-y-4">
+          <aside className="min-w-0 space-y-4">
             <div className="sticky top-24 space-y-4">
               {/* Live preview */}
               <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-elegant">
@@ -458,11 +458,13 @@ function Card({
   icon?: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
 }) {
+  // На мобилке p-4 (16px), на десктопе p-6. Прежний p-6 на 360px экране съедал
+  // 48px из ~340px рабочих, что критично — input'ы и заголовки начинали выпирать.
   return (
-    <div className="rounded-3xl border border-border bg-card p-6 shadow-card">
+    <div className="rounded-3xl border border-border bg-card p-4 shadow-card sm:p-6">
       <div className="mb-4 flex items-center gap-2">
         {Icon && <Icon className="h-5 w-5 text-primary" />}
-        <h2 className="font-display text-lg font-semibold">{title}</h2>
+        <h2 className="font-display text-base font-semibold sm:text-lg">{title}</h2>
       </div>
       {children}
     </div>
