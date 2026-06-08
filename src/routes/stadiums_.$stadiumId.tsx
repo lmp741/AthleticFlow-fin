@@ -92,6 +92,39 @@ interface StadiumRow {
   rating: number | null;
   lat: number | null;
   lng: number | null;
+  // Партнёрские поля (могут быть null для не-партнёрских стадионов)
+  description?: string | null;
+  cover_url?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  is_partner?: boolean;
+}
+
+// Площадка внутри стадиона: «Большое поле 100×64», «Манеж», ...
+interface VenueRow {
+  id: string;
+  stadium_id: string;
+  name: string;
+  size_width: number | null;
+  size_length: number | null;
+  surface: string | null;
+  sports: string[];
+  cover_url: string | null;
+  description: string | null;
+  allow_split: boolean;
+  sort_order: number;
+  size_options: SizeOptionRow[];
+}
+
+interface SizeOptionRow {
+  id: string;
+  venue_id: string;
+  size_code: string;
+  label: string;
+  price_per_hour: number;
+  parallel_count: number;
+  sort_order: number;
 }
 
 interface GameRow {
@@ -113,23 +146,117 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+// «1 площадка», «2 площадки», «5 площадок»
+function pluralizeVenues(n: number) {
+  const last = n % 10;
+  const lastTwo = n % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return "площадок";
+  if (last === 1) return "площадка";
+  if (last >= 2 && last <= 4) return "площадки";
+  return "площадок";
+}
+
+/**
+ * Карточка одной площадки внутри стадиона — фото, размер, покрытие, виды спорта,
+ * варианты аренды с ценами и кнопки «Забронировать». Каждая кнопка ведёт в
+ * /create?stadium=X&venue=Y&size=Z, чтобы форма создания игры предзаполнилась.
+ */
+function VenueCard({ venue, stadiumId }: { venue: VenueRow; stadiumId: string }) {
+  const sizeStr =
+    venue.size_width && venue.size_length
+      ? `${venue.size_length}×${venue.size_width} м`
+      : null;
+  return (
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-border bg-background/60 transition hover:border-primary/40 hover:shadow-card">
+      {venue.cover_url && (
+        <div className="relative h-32 overflow-hidden bg-muted sm:h-40">
+          <img
+            src={venue.cover_url}
+            alt={venue.name}
+            loading="lazy"
+            className="h-full w-full object-cover transition group-hover:scale-105"
+          />
+        </div>
+      )}
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-display text-base font-bold sm:text-lg">{venue.name}</h3>
+          {sizeStr && (
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-mono font-semibold text-muted-foreground">
+              {sizeStr}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1 text-[11px]">
+          {venue.sports.map((sp) => (
+            <span key={sp} className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+              {sp}
+            </span>
+          ))}
+        </div>
+        {venue.surface && <p className="text-[11px] text-muted-foreground">{venue.surface}</p>}
+        {venue.description && (
+          <p className="line-clamp-2 text-xs text-muted-foreground">{venue.description}</p>
+        )}
+
+        <div className="mt-auto space-y-1.5 pt-2">
+          {venue.size_options.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Цены уточняются у менеджера.</p>
+          ) : (
+            venue.size_options.map((opt) => (
+              <Link
+                key={opt.id}
+                to="/create"
+                search={{
+                  stadium: stadiumId,
+                  venue: venue.id,
+                  size: opt.id,
+                  sport: venue.sports[0],
+                }}
+                className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs transition hover:border-primary/60 hover:bg-primary/5"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="font-semibold">{opt.label}</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="font-mono text-muted-foreground">
+                    {opt.price_per_hour.toLocaleString("ru-RU")} ₽/ч
+                  </span>
+                </span>
+                <span className="rounded-full bg-gradient-brand px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm">
+                  Забронировать
+                </span>
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StadiumPage() {
   const { stadiumId } = Route.useParams();
   const [stadium, setStadium] = useState<StadiumRow | null>(null);
   const [games, setGames] = useState<GameRow[] | null>(null);
+  // Партнёрские стадионы (is_partner=true) подгружают список площадок
+  // с вариантами аренды и ценами. Для остальных — пусто.
+  const [venues, setVenues] = useState<VenueRow[]>([]);
   const isOsm = stadiumId.startsWith("osm-");
 
   useEffect(() => {
     if (isOsm) {
       setStadium(null);
       setGames([]);
+      setVenues([]);
       return;
     }
     (async () => {
       const [{ data: s }, { data: g }] = await Promise.all([
         supabase
           .from("stadiums")
-          .select("id, name, address, sports, price_per_hour, rating, lat, lng")
+          .select(
+            "id, name, address, sports, price_per_hour, rating, lat, lng, description, cover_url, phone, email, website, is_partner",
+          )
           .eq("id", stadiumId)
           .maybeSingle(),
         supabase
@@ -144,6 +271,40 @@ function StadiumPage() {
       ]);
       setStadium(s as StadiumRow | null);
       setGames((g ?? []) as unknown as GameRow[]);
+
+      // Подгружаем площадки только если стадион партнёрский — иначе они не настроены.
+      if (s && (s as StadiumRow).is_partner) {
+        const { data: v } = await supabase
+          .from("stadium_venues")
+          .select(
+            "id, stadium_id, name, size_width, size_length, surface, sports, cover_url, description, allow_split, sort_order",
+          )
+          .eq("stadium_id", stadiumId)
+          .eq("active", true)
+          .order("sort_order", { ascending: true });
+        const venueIds = (v ?? []).map((x) => x.id);
+        let optionsByVenue: Record<string, SizeOptionRow[]> = {};
+        if (venueIds.length) {
+          const { data: opts } = await supabase
+            .from("venue_size_options")
+            .select("id, venue_id, size_code, label, price_per_hour, parallel_count, sort_order")
+            .in("venue_id", venueIds)
+            .eq("active", true)
+            .order("sort_order", { ascending: true });
+          (opts ?? []).forEach((o) => {
+            optionsByVenue[o.venue_id] = optionsByVenue[o.venue_id] ?? [];
+            optionsByVenue[o.venue_id].push(o as SizeOptionRow);
+          });
+        }
+        setVenues(
+          (v ?? []).map((x) => ({
+            ...(x as Omit<VenueRow, "size_options">),
+            size_options: optionsByVenue[x.id] ?? [],
+          })),
+        );
+      } else {
+        setVenues([]);
+      }
     })();
   }, [stadiumId, isOsm]);
 
@@ -373,19 +534,66 @@ function StadiumPage() {
             {stadium && (
               <article className="rounded-3xl border border-border bg-card p-5 shadow-card sm:p-6">
                 <h2 className="font-display text-xl font-bold sm:text-2xl">О стадионе</h2>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                  Стадион <b className="text-foreground">«{stadium.name}»</b> расположен по адресу{" "}
-                  <span className="text-foreground">{stadium.address}</span> в Москве. Это одна из площадок Athletic Flow:
-                  здесь регулярно проходят открытые любительские игры —
-                  {stadium.sports.length > 0 ? ` ${stadium.sports.slice(0, 3).join(", ").toLowerCase()} ` : " игры с мячом, "}
-                  и др. Базовая стоимость аренды поля — <b className="text-foreground">от {stadium.price_per_hour} ₽ в час</b>,
-                  итоговая цена для участника делится между всеми, кто записался на матч.
+                {/* Для партнёрских стадионов показываем кастомное описание (с сайта или
+                    написанное менеджером). Для остальных — авто-генеренный текст. */}
+                {stadium.description ? (
+                  <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-muted-foreground sm:text-base">
+                    {stadium.description}
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                      Стадион <b className="text-foreground">«{stadium.name}»</b> расположен по адресу{" "}
+                      <span className="text-foreground">{stadium.address}</span> в Москве. Это одна из площадок Athletic Flow:
+                      здесь регулярно проходят открытые любительские игры —
+                      {stadium.sports.length > 0 ? ` ${stadium.sports.slice(0, 3).join(", ").toLowerCase()} ` : " игры с мячом, "}
+                      и др. Базовая стоимость аренды поля — <b className="text-foreground">от {stadium.price_per_hour} ₽ в час</b>,
+                      итоговая цена для участника делится между всеми, кто записался на матч.
+                    </p>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                      Если ты ищешь, где сыграть в Москве в выходные или вечером после работы — открой расписание ниже,
+                      выбери матч по уровню (новичок / любитель / профи) и присоединяйся к команде в 3 клика. Если подходящей
+                      игры нет — создай свою и пригласи друзей.
+                    </p>
+                  </>
+                )}
+                {/* Контакты партнёрского стадиона */}
+                {(stadium.phone || stadium.email || stadium.website) && (
+                  <div className="mt-4 flex flex-wrap gap-3 border-t border-border pt-3 text-xs text-muted-foreground">
+                    {stadium.phone && (
+                      <a href={`tel:${stadium.phone.replace(/[^+\d]/g, "")}`} className="hover:text-foreground">
+                        📞 {stadium.phone}
+                      </a>
+                    )}
+                    {stadium.email && (
+                      <a href={`mailto:${stadium.email}`} className="hover:text-foreground">
+                        ✉️ {stadium.email}
+                      </a>
+                    )}
+                    {stadium.website && (
+                      <a href={stadium.website} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">
+                        🌐 Сайт
+                      </a>
+                    )}
+                  </div>
+                )}
+              </article>
+            )}
+
+            {/* Партнёрские площадки внутри стадиона — каждая со своими размерами и
+                ценами + кнопкой «Забронировать» (перенаправляет в /create). */}
+            {venues.length > 0 && (
+              <article className="rounded-3xl border border-border bg-card p-5 shadow-card sm:p-6">
+                <h2 className="font-display text-xl font-bold sm:text-2xl">Поля и площадки</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  У стадиона {venues.length} {pluralizeVenues(venues.length)}. Выбирай, что подходит — и сразу
+                  бронируй слот.
                 </p>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                  Если ты ищешь, где сыграть в Москве в выходные или вечером после работы — открой расписание ниже,
-                  выбери матч по уровню (новичок / любитель / профи) и присоединяйся к команде в 3 клика. Если подходящей
-                  игры нет — создай свою и пригласи друзей.
-                </p>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {venues.map((v) => (
+                    <VenueCard key={v.id} venue={v} stadiumId={stadium!.id} />
+                  ))}
+                </div>
               </article>
             )}
 

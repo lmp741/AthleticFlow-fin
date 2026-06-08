@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calendar, MapPin, Users, Wallet, Lock, Globe, Eye, Clock as ClockIcon, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SiteHeader, SiteFooter } from "@/components/layout/SiteShell";
@@ -23,6 +23,19 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { DatePicker, TimePicker } from "@/components/ui/date-time-picker";
 
 export const Route = createFileRoute("/create")({
+  // С карточки стадиона прилетают параметры: ?stadium=X&venue=Y&size=Z&sport=...
+  // Все опциональные; невалидные просто игнорируются.
+  validateSearch: (search: Record<string, unknown>) => {
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const pick = (k: string) =>
+      typeof search[k] === "string" && uuidRe.test(search[k] as string) ? (search[k] as string) : undefined;
+    return {
+      stadium: pick("stadium"),
+      venue: pick("venue"),
+      size: pick("size"),
+      sport: typeof search.sport === "string" ? (search.sport as string) : undefined,
+    };
+  },
   head: () => ({
     meta: [
       { title: "Создать игру — Athletic Flow" },
@@ -32,30 +45,31 @@ export const Route = createFileRoute("/create")({
   component: () => (<RequireAuth><CreateGamePage /></RequireAuth>),
 });
 
-const sports = [
-  "Футбол",
-  "Футзал",
-  "Баскетбол",
-  "Волейбол",
-  "Пляжный волейбол",
-  "Хоккей",
-  "Хоккей на траве",
-  "Регби",
-  "Американский футбол",
-  "Гандбол",
-  "Бейсбол",
-  "Водное поло",
-  "Флорбол",
-  "Фрисби",
-  "Падел",
-  "Теннис",
-];
+// Только спорты которые реально доступны на наших партнёрских стадионах.
+const sports = ["Футбол", "Мини-футбол", "Волейбол", "Теннис"];
 const levels = ["Новичок", "Любитель", "Полупрофи", "Профи"];
 
 interface StadiumOpt {
   id: string;
   name: string;
   address: string;
+  is_partner?: boolean;
+}
+
+// Площадка партнёрского стадиона + варианты аренды с ценами.
+interface VenueWithOptions {
+  id: string;
+  name: string;
+  sports: string[];
+  size_width: number | null;
+  size_length: number | null;
+  size_options: {
+    id: string;
+    size_code: string;
+    label: string;
+    price_per_hour: number;
+    parallel_count: number;
+  }[];
 }
 
 function todayISO() {
@@ -65,8 +79,10 @@ function todayISO() {
 function CreateGamePage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  // Параметры из URL (с карточки стадиона). Используются для предзаполнения.
+  const searchParams = Route.useSearch();
 
-  const [sport, setSport] = useState("Футбол");
+  const [sport, setSport] = useState(searchParams.sport && sports.includes(searchParams.sport) ? searchParams.sport : "Футбол");
   const [level, setLevel] = useState("Любитель");
   const [date, setDate] = useState(todayISO());
   const [timeStart, setTimeStart] = useState("19:00");
@@ -76,7 +92,11 @@ function CreateGamePage() {
   // с FORMATIONS_A в FormationPreview (там size — это сколько в команде).
   const [players, setPlayers] = useState([5]);
   const [stadiums, setStadiums] = useState<StadiumOpt[]>([]);
-  const [stadiumId, setStadiumId] = useState("");
+  const [stadiumId, setStadiumId] = useState(searchParams.stadium ?? "");
+  // Партнёрские поля: список площадок выбранного стадиона + выбранная площадка + выбранный размер.
+  const [venues, setVenues] = useState<VenueWithOptions[]>([]);
+  const [venueId, setVenueId] = useState<string>(searchParams.venue ?? "");
+  const [sizeOptionId, setSizeOptionId] = useState<string>(searchParams.size ?? "");
   // Модель оплаты:
   //   "split" — вводим общую аренду, делим на участников (price/чел = floor(rent/N))
   //   "fixed" — вводим фикс. сумму с каждого, общая = price × N
@@ -95,14 +115,118 @@ function CreateGamePage() {
     (async () => {
       const { data } = await supabase
         .from("stadiums")
-        .select("id, name, address")
+        .select("id, name, address, is_partner")
         .order("name");
       if (data) {
         setStadiums(data);
-        if (data[0]) setStadiumId(data[0].id);
+        // Не перезаписываем stadiumId если он уже пришёл из URL.
+        if (!stadiumId && data[0]) setStadiumId(data[0].id);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // При смене стадиона подтягиваем его площадки + варианты аренды.
+  // Партнёрский (is_partner=true) → есть venues. Остальные — пусто, идёт по
+  // старой логике (свой rent/fixed расчёт).
+  useEffect(() => {
+    if (!stadiumId) {
+      setVenues([]);
+      return;
+    }
+    const partner = stadiums.find((s) => s.id === stadiumId)?.is_partner;
+    if (!partner) {
+      setVenues([]);
+      // Если стадион сменили на не-партнёрский — сбросим venue/size.
+      setVenueId("");
+      setSizeOptionId("");
+      return;
+    }
+    (async () => {
+      const { data: vs } = await supabase
+        .from("stadium_venues")
+        .select("id, name, sports, size_width, size_length")
+        .eq("stadium_id", stadiumId)
+        .eq("active", true)
+        .order("sort_order", { ascending: true });
+      const ids = (vs ?? []).map((v) => v.id);
+      let optsByVenue: Record<string, VenueWithOptions["size_options"]> = {};
+      if (ids.length) {
+        const { data: opts } = await supabase
+          .from("venue_size_options")
+          .select("id, venue_id, size_code, label, price_per_hour, parallel_count")
+          .in("venue_id", ids)
+          .eq("active", true)
+          .order("sort_order", { ascending: true });
+        (opts ?? []).forEach((o) => {
+          optsByVenue[o.venue_id] = optsByVenue[o.venue_id] ?? [];
+          optsByVenue[o.venue_id].push({
+            id: o.id,
+            size_code: o.size_code,
+            label: o.label,
+            price_per_hour: o.price_per_hour,
+            parallel_count: o.parallel_count,
+          });
+        });
+      }
+      const list: VenueWithOptions[] = (vs ?? []).map((v) => ({
+        ...(v as Omit<VenueWithOptions, "size_options">),
+        size_options: optsByVenue[v.id] ?? [],
+      }));
+      setVenues(list);
+
+      // Авто-выбор: если venueId был из URL и существует — оставим, иначе первая.
+      const validVenue = venueId && list.find((v) => v.id === venueId);
+      if (!validVenue) setVenueId(list[0]?.id ?? "");
+      // Авто-цена: если sizeOptionId не валиден — берём первую опцию выбранной площадки.
+      const targetVenue = validVenue ?? list[0];
+      const validOpt = sizeOptionId && targetVenue?.size_options.find((o) => o.id === sizeOptionId);
+      if (!validOpt) setSizeOptionId(targetVenue?.size_options[0]?.id ?? "");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stadiumId, stadiums]);
+
+  // Реалтайм на цены: если менеджер изменил price_per_hour в админке,
+  // на фронте пересчитается без F5. Подписка лёгкая (одна таблица, фильтр по venue).
+  useEffect(() => {
+    if (!venueId) return;
+    const ch = supabase
+      .channel(`venue-options-${venueId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "venue_size_options", filter: `venue_id=eq.${venueId}` },
+        async () => {
+          const { data: opts } = await supabase
+            .from("venue_size_options")
+            .select("id, venue_id, size_code, label, price_per_hour, parallel_count")
+            .eq("venue_id", venueId)
+            .eq("active", true)
+            .order("sort_order", { ascending: true });
+          setVenues((prev) =>
+            prev.map((v) =>
+              v.id === venueId
+                ? { ...v, size_options: (opts ?? []).map((o) => ({
+                    id: o.id,
+                    size_code: o.size_code,
+                    label: o.label,
+                    price_per_hour: o.price_per_hour,
+                    parallel_count: o.parallel_count,
+                  })) }
+                : v,
+            ),
+          );
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [venueId]);
+
+  // Текущая выбранная площадка и текущая опция размера (если партнёрский режим).
+  const selectedVenue = venues.find((v) => v.id === venueId);
+  const selectedOption = selectedVenue?.size_options.find((o) => o.id === sizeOptionId);
+  const isPartnerMode = venues.length > 0;
 
   // Комиссия 10% — внутреннее правило, в UI не показываем.
   // split:  игрок платит ceil(rent × 1.1 / N) — наценка покрывает сервисный сбор.
@@ -115,14 +239,30 @@ function CreateGamePage() {
   const slots = teamSize * 2;
   const rentNum = Math.max(0, Number(rentTotal) || 0);
   const fixedNum = Math.max(0, Number(fixedPrice) || 0);
-  const splitPrice = Math.ceil((rentNum * (1 + COMMISSION)) / slots);
+  // Длительность брони в часах (для расчёта суммы аренды партнёрской площадки).
+  const durationHours = useMemo(() => {
+    const [h1, m1] = timeStart.split(":").map(Number);
+    const [h2, m2] = timeEnd.split(":").map(Number);
+    const mins = h2 * 60 + m2 - (h1 * 60 + m1);
+    return Math.max(0, mins / 60);
+  }, [timeStart, timeEnd]);
+  // В партнёрском режиме аренда = price_per_hour × часов. Перекрывает rentNum.
+  const partnerRent = selectedOption ? Math.round(selectedOption.price_per_hour * durationHours) : 0;
+  const effectiveRent = isPartnerMode ? partnerRent : rentNum;
+  const splitPrice = Math.ceil((effectiveRent * (1 + COMMISSION)) / slots);
   const fixedPriceFinal = Math.ceil(fixedNum * (1 + COMMISSION));
-  const pricePerPlayer = payMode === "split" ? splitPrice : fixedPriceFinal;
+  // В партнёрском режиме всегда split (цена аренды фиксирована, делим на участников).
+  const pricePerPlayer = isPartnerMode ? splitPrice : (payMode === "split" ? splitPrice : fixedPriceFinal);
   const totalPlan = pricePerPlayer * slots;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !stadiumId) return;
+    // В партнёрском режиме нужно обязательно выбрать площадку и размер аренды.
+    if (isPartnerMode && (!venueId || !sizeOptionId)) {
+      toast.error("Выбери площадку и размер аренды");
+      return;
+    }
     setSubmitting(true);
     const starts_at = new Date(`${date}T${timeStart}:00`).toISOString();
     const ends_at = new Date(`${date}T${timeEnd}:00`).toISOString();
@@ -138,21 +278,42 @@ function CreateGamePage() {
         // В БД храним именно общее количество мест.
         slots_total: slots,
         price_per_player: pricePerPlayer,
-        // rent_total сохраняем только в split-модели — на странице игры её используем
-        // для пересчёта при редактировании slots.
-        rent_total: payMode === "split" ? rentNum : null,
+        // В партнёрском режиме rent_total = эффективная цена аренды (price × часы).
+        // В обычном — старая логика (только split).
+        rent_total: isPartnerMode ? effectiveRent : (payMode === "split" ? rentNum : null),
         description: description || null,
         is_private: isPrivate,
       })
       .select("id")
       .single();
-    setSubmitting(false);
     if (error || !data) {
+      setSubmitting(false);
       toast.error(error?.message ?? "Не удалось создать игру");
       return;
     }
-    // Auto-join organizer
+
+    // Партнёрский режим — бронируем venue для игры. Если занят — откатываем
+    // (удалим только что созданную игру, чтобы не висела без брони).
+    if (isPartnerMode) {
+      const { error: bookErr } = await supabase.rpc("book_venue", {
+        p_venue_id: venueId,
+        p_size_option_id: sizeOptionId,
+        p_starts_at: starts_at,
+        p_ends_at: ends_at,
+        p_source: "game",
+        p_game_id: data.id,
+      });
+      if (bookErr) {
+        await supabase.from("games").delete().eq("id", data.id);
+        setSubmitting(false);
+        toast.error("Слот уже занят: " + bookErr.message);
+        return;
+      }
+    }
+
+    // Auto-join organizer.
     await supabase.from("game_participants").insert({ game_id: data.id, user_id: user.id });
+    setSubmitting(false);
     toast.success("Игра создана!");
     navigate({ to: "/games/$gameId", params: { gameId: data.id } });
   };
@@ -225,12 +386,100 @@ function CreateGamePage() {
                     <SelectItem key={s.id} value={s.id}>
                       <span className="block truncate">
                         <span className="font-medium">{s.name}</span>
+                        {s.is_partner && (
+                          <span className="ml-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            Партнёр
+                          </span>
+                        )}
                         <span className="ml-1 text-xs text-muted-foreground">— {s.address}</span>
                       </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+
+              {/* Партнёрский режим: выбор площадки + вариант аренды */}
+              {isPartnerMode && (
+                <div className="mt-5 space-y-3">
+                  <div>
+                    <Label>Площадка</Label>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {venues.map((v) => {
+                        const active = v.id === venueId;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setVenueId(v.id);
+                              setSizeOptionId(v.size_options[0]?.id ?? "");
+                            }}
+                            className={`flex flex-col gap-1 rounded-2xl border p-3 text-left transition ${
+                              active
+                                ? "border-primary bg-primary/5 shadow-glow"
+                                : "border-border bg-background hover:border-primary/40"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold">{v.name}</span>
+                              {v.size_width && v.size_length && (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-mono">
+                                  {v.size_length}×{v.size_width}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 text-[10px]">
+                              {v.sports.map((sp) => (
+                                <span key={sp} className="rounded-full bg-primary/10 px-1.5 py-0.5 font-semibold text-primary">
+                                  {sp}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {selectedVenue && selectedVenue.size_options.length > 0 && (
+                    <div>
+                      <Label>Размер аренды</Label>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        {selectedVenue.size_options.map((opt) => {
+                          const active = opt.id === sizeOptionId;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setSizeOptionId(opt.id)}
+                              className={`flex flex-col items-center gap-1 rounded-2xl border p-3 text-center transition ${
+                                active
+                                  ? "border-primary bg-primary/5 shadow-glow"
+                                  : "border-border bg-background hover:border-primary/40"
+                              }`}
+                            >
+                              <span className="text-sm font-semibold">{opt.label}</span>
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {opt.price_per_hour.toLocaleString("ru-RU")} ₽/ч
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedOption && durationHours > 0 && (
+                    <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                      Аренда {Math.round(durationHours * 10) / 10} ч ·{" "}
+                      <b className="text-foreground">
+                        {partnerRent.toLocaleString("ru-RU")} ₽
+                      </b>
+                      {" "}— делится между участниками.
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
 
             <Card title="Условия" icon={Users}>
@@ -361,6 +610,21 @@ function CreateGamePage() {
                 </div>
               </div>
 
+              {/* Блок «Оплата» в партнёрском режиме не нужен — цена аренды
+                  уже задана через выбранный размер площадки. Показываем мини-сводку. */}
+              {isPartnerMode ? (
+                <Card title="Оплата" icon={Wallet}>
+                  <div className="rounded-2xl bg-muted p-4">
+                    <p className="text-xs text-muted-foreground">С каждого игрока</p>
+                    <p className="font-display text-2xl font-bold">{pricePerPlayer} ₽</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Аренда {partnerRent.toLocaleString("ru-RU")} ₽ за {Math.round(durationHours * 10) / 10} ч,
+                      делится между {slots} участниками. Цена обновится автоматически если менеджер
+                      изменит тариф.
+                    </p>
+                  </div>
+                </Card>
+              ) : (
               <Card title="Оплата" icon={Wallet}>
                 {/* Toggle модели оплаты */}
                 <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-muted/40 p-1">
@@ -426,6 +690,7 @@ function CreateGamePage() {
                   </>
                 )}
               </Card>
+              )}
 
               <Button
                 type="submit"
