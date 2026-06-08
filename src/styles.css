@@ -17,6 +17,13 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* Прячем украинский флаг из attribution Leaflet.
+   С 2022 OSM Foundation добавила его прямо в leaflet/dist/leaflet.css.
+   Текстовая атрибуция OSM (требование лицензии ODbL) остаётся видимой. */
+.leaflet-attribution-flag {
+  display: none !important;
+}
+
 /* Athletic Flow design system — light theme inspired by brand presentation */
 
 @theme inline {
