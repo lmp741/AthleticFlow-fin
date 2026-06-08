@@ -100,6 +100,30 @@ export default function StadiumsMap({ user, radiusKm, stadiums }: Props) {
   // Avoid SSR
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
+
+  // Дополнительная подстраховка: если Leaflet/OSM tile-провайдер всё же впихнули
+  // флаг или svg в attribution-контрол — удаляем их рукой через MutationObserver.
+  useEffect(() => {
+    if (!ready) return;
+    const clean = () => {
+      document.querySelectorAll(".leaflet-control-attribution").forEach((el) => {
+        el.querySelectorAll("svg, img, .leaflet-attribution-flag").forEach((node) => node.remove());
+        // Эмодзи-флаги в текстовых нодах
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const toUpdate: Text[] = [];
+        while (walker.nextNode()) toUpdate.push(walker.currentNode as Text);
+        toUpdate.forEach((tn) => {
+          // 🇺🇦 = 🇺🇦
+          if (tn.nodeValue) tn.nodeValue = tn.nodeValue.replace(/🇺🇦/g, "");
+        });
+      });
+    };
+    clean();
+    const observer = new MutationObserver(clean);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [ready]);
+
   if (!ready) return null;
 
   return (
