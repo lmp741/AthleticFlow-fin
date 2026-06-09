@@ -87,6 +87,10 @@ function CreateGamePage() {
   const [date, setDate] = useState(todayISO());
   const [timeStart, setTimeStart] = useState("19:00");
   const [timeEnd, setTimeEnd] = useState("20:30");
+  // Партнёрский режим: длительность аренды (мин) и факт выбора свободного слота.
+  // Время в партнёрском режиме выбирается ТОЛЬКО из сетки get_free_slots.
+  const [durationMin, setDurationMin] = useState(90);
+  const [slotPicked, setSlotPicked] = useState(false);
   // Слайдер хранит РАЗМЕР КОМАНДЫ (5 = "играем 5 на 5"). Общее число
   // участников — players[0] * 2. Это привычнее футболистам и совпадает
   // с FORMATIONS_A в FormationPreview (там size — это сколько в команде).
@@ -119,8 +123,9 @@ function CreateGamePage() {
         .order("name");
       if (data) {
         setStadiums(data);
-        // Не перезаписываем stadiumId если он уже пришёл из URL.
-        if (!stadiumId && data[0]) setStadiumId(data[0].id);
+        // Стадион НЕ автоселектим: пользователь выбирает сам (или приходит
+        // с карточки стадиона с ?stadium=). Иначе партнёрский UI с площадками
+        // выскакивает до того, как человек вообще выбрал Луч.
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,6 +139,10 @@ function CreateGamePage() {
       setVenues([]);
       return;
     }
+    // Пока список стадионов не загрузился — НИЧЕГО не сбрасываем.
+    // Иначе на маунте (stadiums=[]) ветка "не партнёр" затирала venue/size,
+    // пришедшие из URL с карточки стадиона.
+    if (!stadiums.length) return;
     const partner = stadiums.find((s) => s.id === stadiumId)?.is_partner;
     if (!partner) {
       setVenues([]);
@@ -223,6 +232,11 @@ function CreateGamePage() {
     };
   }, [venueId]);
 
+  // Смена площадки/размера/даты/длительности инвалидирует выбранный слот.
+  useEffect(() => {
+    setSlotPicked(false);
+  }, [venueId, sizeOptionId, date, durationMin]);
+
   // Текущая выбранная площадка и текущая опция размера (если партнёрский режим).
   const selectedVenue = venues.find((v) => v.id === venueId);
   const selectedOption = selectedVenue?.size_options.find((o) => o.id === sizeOptionId);
@@ -257,10 +271,19 @@ function CreateGamePage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !stadiumId) return;
+    if (!user) return;
+    if (!stadiumId) {
+      toast.error("Выбери стадион");
+      return;
+    }
     // В партнёрском режиме нужно обязательно выбрать площадку и размер аренды.
     if (isPartnerMode && (!venueId || !sizeOptionId)) {
       toast.error("Выбери площадку и размер аренды");
+      return;
+    }
+    // ...и свободный слот из сетки (занятое время выбрать невозможно).
+    if (isPartnerMode && !slotPicked) {
+      toast.error("Выбери свободное время в блоке «Когда»");
       return;
     }
     setSubmitting(true);
@@ -341,37 +364,8 @@ function CreateGamePage() {
               <Chips items={sports} value={sport} onChange={setSport} />
             </Card>
 
-            <Card title="Когда" icon={Calendar}>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <Label>Дата</Label>
-                  <div className="mt-1">
-                    <DatePicker
-                      value={date}
-                      onChange={setDate}
-                      minDate={(() => {
-                        const d = new Date();
-                        d.setHours(0, 0, 0, 0);
-                        return d;
-                      })()}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label>Начало</Label>
-                  <div className="mt-1">
-                    <TimePicker value={timeStart} onChange={setTimeStart} />
-                  </div>
-                </div>
-                <div>
-                  <Label>Окончание</Label>
-                  <div className="mt-1">
-                    <TimePicker value={timeEnd} onChange={setTimeEnd} />
-                  </div>
-                </div>
-              </div>
-            </Card>
-
+            {/* «Локация» теперь ВЫШЕ «Когда»: для партнёрского стадиона свободное
+                время зависит от выбранной площадки и размера аренды. */}
             <Card title="Локация" icon={MapPin}>
               <Label>Стадион</Label>
               <Select value={stadiumId} onValueChange={setStadiumId}>
@@ -469,7 +463,7 @@ function CreateGamePage() {
                     </div>
                   )}
 
-                  {selectedOption && durationHours > 0 && (
+                  {selectedOption && durationHours > 0 && slotPicked && (
                     <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                       Аренда {Math.round(durationHours * 10) / 10} ч ·{" "}
                       <b className="text-foreground">
@@ -478,6 +472,97 @@ function CreateGamePage() {
                       {" "}— делится между участниками.
                     </p>
                   )}
+                </div>
+              )}
+            </Card>
+
+            <Card title="Когда" icon={Calendar}>
+              {isPartnerMode ? (
+                /* Партнёрский режим: дата + длительность + сетка СВОБОДНОГО времени.
+                   Занятые слоты задизейблены — выбрать физически нельзя. */
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <Label>Дата</Label>
+                      <div className="mt-1">
+                        <DatePicker
+                          value={date}
+                          onChange={setDate}
+                          minDate={(() => {
+                            const d = new Date();
+                            d.setHours(0, 0, 0, 0);
+                            return d;
+                          })()}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Длительность</Label>
+                      <Select
+                        value={String(durationMin)}
+                        onValueChange={(v) => setDurationMin(Number(v))}
+                      >
+                        <SelectTrigger className="mt-1 h-11 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="60">1 час</SelectItem>
+                          <SelectItem value="90">1,5 часа</SelectItem>
+                          <SelectItem value="120">2 часа</SelectItem>
+                          <SelectItem value="150">2,5 часа</SelectItem>
+                          <SelectItem value="180">3 часа</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {venueId && sizeOptionId ? (
+                    <PartnerSlotPicker
+                      venueId={venueId}
+                      sizeOptionId={sizeOptionId}
+                      date={date}
+                      durationMin={durationMin}
+                      selectedStart={slotPicked ? timeStart : null}
+                      onPick={(s, e) => {
+                        setTimeStart(s);
+                        setTimeEnd(e);
+                        setSlotPicked(true);
+                      }}
+                      onInvalidate={() => setSlotPicked(false)}
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Сначала выбери площадку и размер аренды — покажем свободное время.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <Label>Дата</Label>
+                    <div className="mt-1">
+                      <DatePicker
+                        value={date}
+                        onChange={setDate}
+                        minDate={(() => {
+                          const d = new Date();
+                          d.setHours(0, 0, 0, 0);
+                          return d;
+                        })()}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Начало</Label>
+                    <div className="mt-1">
+                      <TimePicker value={timeStart} onChange={setTimeStart} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Окончание</Label>
+                    <div className="mt-1">
+                      <TimePicker value={timeEnd} onChange={setTimeEnd} />
+                    </div>
+                  </div>
                 </div>
               )}
             </Card>
@@ -761,6 +846,138 @@ function Chips({
           {it}
         </button>
       ))}
+    </div>
+  );
+}
+
+// ============================================================
+// Сетка свободного времени партнёрской площадки.
+// Источник — RPC get_free_slots (учитывает график работы, override'ы,
+// существующие брони и parallel_count). Занятые слоты задизейблены.
+// Realtime: если кто-то бронирует параллельно — сетка обновляется сама,
+// а выбранный слот, ставший занятым, сбрасывается через onInvalidate.
+// ============================================================
+type FreeSlot = { startISO: string; start: string; end: string; busy: boolean };
+
+function PartnerSlotPicker({
+  venueId,
+  sizeOptionId,
+  date,
+  durationMin,
+  selectedStart,
+  onPick,
+  onInvalidate,
+}: {
+  venueId: string;
+  sizeOptionId: string;
+  date: string;
+  durationMin: number;
+  selectedStart: string | null;
+  onPick: (start: string, end: string) => void;
+  onInvalidate: () => void;
+}) {
+  const [slots, setSlots] = useState<FreeSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    const fmt = (iso: string) =>
+      new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const load = async () => {
+      const { data, error } = await supabase.rpc("get_free_slots", {
+        p_venue_id: venueId,
+        p_date: date,
+        p_size_option_id: sizeOptionId,
+        p_duration_min: durationMin,
+      });
+      if (!alive) return;
+      setLoading(false);
+      if (error) {
+        toast.error("Не удалось загрузить свободное время");
+        return;
+      }
+      setSlots(
+        ((data ?? []) as { slot_start: string; slot_end: string; busy: boolean }[]).map((r) => ({
+          startISO: r.slot_start,
+          start: fmt(r.slot_start),
+          end: fmt(r.slot_end),
+          busy: r.busy,
+        })),
+      );
+    };
+    setLoading(true);
+    void load();
+    const ch = supabase
+      .channel(`free-slots-${venueId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "venue_bookings", filter: `venue_id=eq.${venueId}` },
+        () => void load(),
+      )
+      .subscribe();
+    return () => {
+      alive = false;
+      supabase.removeChannel(ch);
+    };
+  }, [venueId, sizeOptionId, date, durationMin]);
+
+  // Прошедшее время на сегодня не предлагаем.
+  const now = Date.now();
+  const visible = slots.filter((s) => new Date(s.startISO).getTime() > now);
+
+  // Выбранный слот стал занят/исчез (кто-то успел забронировать) — сброс.
+  useEffect(() => {
+    if (!selectedStart) return;
+    const sel = visible.find((s) => s.start === selectedStart);
+    if (!sel || sel.busy) onInvalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots]);
+
+  if (loading && !slots.length) {
+    return <p className="text-sm text-muted-foreground">Загружаем свободное время…</p>;
+  }
+  if (!visible.length) {
+    return (
+      <p className="rounded-xl bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        На эту дату свободного времени нет — попробуй другой день или меньшую длительность.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <Label>Свободное время (начало игры)</Label>
+      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+        {visible.map((s) => {
+          const active = selectedStart === s.start;
+          return (
+            <button
+              key={s.startISO}
+              type="button"
+              disabled={s.busy}
+              onClick={() => onPick(s.start, s.end)}
+              className={`rounded-xl border px-2 py-2 text-sm font-medium transition ${
+                s.busy
+                  ? "cursor-not-allowed border-border/40 bg-muted/40 text-muted-foreground/50 line-through"
+                  : active
+                    ? "border-transparent bg-gradient-brand text-primary-foreground shadow-glow"
+                    : "border-border bg-background hover:border-primary/50"
+              }`}
+            >
+              {s.start}
+            </button>
+          );
+        })}
+      </div>
+      {selectedStart ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Выбрано: {selectedStart}–{visible.find((s) => s.start === selectedStart)?.end}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Зачёркнутое время уже занято.
+        </p>
+      )}
     </div>
   );
 }

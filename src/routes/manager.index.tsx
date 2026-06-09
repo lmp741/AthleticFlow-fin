@@ -105,6 +105,8 @@ function ManagerHome() {
       .channel("manager-home-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "venue_bookings" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "game_series" }, () => load())
+      // Статус оплаты: записи/оплаты участников меняют paid_count.
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_participants" }, () => load())
       .subscribe();
     return () => {
       supabase.removeChannel(ch);

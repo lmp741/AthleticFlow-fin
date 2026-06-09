@@ -57,6 +57,7 @@ export type ManagerBooking = {
   game_level: string | null;
   game_slots_total: number | null;
   game_participants: number | null;
+  game_paid_count: number | null;
   organizer_id: string | null;
   organizer_name: string | null;
   organizer_avatar: string | null;

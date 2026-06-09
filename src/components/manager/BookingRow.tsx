@@ -49,6 +49,19 @@ export function BookingRow({ b, onCancel }: { b: ManagerBooking; onCancel?: () =
             {b.source === "external" && b.external_phone && `${b.external_phone} · `}
             {fmtMoney(b.price_total)}
           </p>
+          {b.source === "game" && b.game_slots_total != null && (
+            <p className="text-xs">
+              {(b.game_paid_count ?? 0) >= (b.game_participants ?? 0) && (b.game_participants ?? 0) > 0 ? (
+                <span className="font-medium text-emerald-600">
+                  Оплачено: {b.game_paid_count}/{b.game_participants}
+                </span>
+              ) : (
+                <span className="font-medium text-amber-600">
+                  Оплачено: {b.game_paid_count ?? 0}/{b.game_participants ?? 0}
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </div>
       {onCancel && b.status === "confirmed" && (
