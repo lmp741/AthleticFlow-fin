@@ -107,6 +107,9 @@ function ChatPage() {
     addressee_id: string;
   } | null>(null);
   const [friendActionBusy, setFriendActionBusy] = useState(false);
+  // Связь менеджер↔организатор: DM разрешён и без дружбы (RLS-политика
+  // "friends or manager relation send dm" + RPC can_dm_with).
+  const [managerRelation, setManagerRelation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<DM[]>([]);
   const [body, setBody] = useState("");
@@ -135,8 +138,14 @@ function ChatPage() {
           .maybeSingle(),
       ]);
       setFriend(prof as ProfileLite | null);
-      setAreFriends(!!fr && fr.status === "accepted");
+      const accepted = !!fr && fr.status === "accepted";
+      setAreFriends(accepted);
       setFriendship((fr as typeof friendship) ?? null);
+      if (!accepted) {
+        // Не друзья — возможно, это пара менеджер↔организатор.
+        const { data: rel } = await supabase.rpc("can_dm_with", { p_other: friendId });
+        setManagerRelation(!!rel);
+      }
       setLoading(false);
     })();
   }, [myId, friendId]);
@@ -391,7 +400,7 @@ function ChatPage() {
     );
   }
 
-  if (!areFriends) {
+  if (!areFriends && !managerRelation) {
     // 3 состояния: нет заявки / отправил я (жду) / отправил он (могу принять).
     const haveOutgoing =
       friendship && friendship.status === "pending" && friendship.requester_id === myId;

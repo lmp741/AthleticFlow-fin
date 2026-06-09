@@ -101,13 +101,31 @@ function ManagerCalendar() {
   const dayBookings = byDay[selected] ?? [];
   const todayKey = toDateKey(today);
 
-  const cancelBooking = async (id: string) => {
-    const { error } = await supabase.rpc("cancel_booking", { p_booking_id: id });
-    if (error) {
-      toast.error(error.message);
-      return;
+  const cancelBooking = async (b: ManagerBooking) => {
+    // Игровая бронь = отмена ИГРЫ: архив, снятие брони, нотификации о возврате.
+    if (b.source === "game" && b.game_id) {
+      const reason = window.prompt(
+        "Отменить игру? Участники получат уведомление о возврате оплаты.\nПричина (необязательно):",
+      );
+      if (reason === null) return;
+      const { error } = await supabase.rpc("manager_cancel_game", {
+        p_game_id: b.game_id,
+        p_reason: reason || null,
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Игра отменена, участники уведомлены");
+    } else {
+      if (!window.confirm("Отменить бронь?")) return;
+      const { error } = await supabase.rpc("cancel_booking", { p_booking_id: b.booking_id });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Бронь отменена");
     }
-    toast.success("Бронь отменена");
     void load();
   };
 
@@ -192,7 +210,7 @@ function ManagerCalendar() {
             <p className="py-6 text-center text-sm text-muted-foreground">На этот день броней нет.</p>
           )}
           {dayBookings.map((b) => (
-            <BookingRow key={b.booking_id} b={b} onCancel={() => cancelBooking(b.booking_id)} />
+            <BookingRow key={b.booking_id} b={b} onCancel={() => cancelBooking(b)} />
           ))}
         </CardContent>
       </Card>
@@ -232,6 +250,8 @@ function AddBookingDialog({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  // Повтор еженедельно: 1 = разовая бронь.
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
   const [busy, setBusy] = useState(false);
 
   // При открытии — дефолты от выбранного дня и первой площадки.
@@ -252,28 +272,49 @@ function AddBookingDialog({
       return;
     }
     const hours = Math.max(0.5, Number(durationH) || 1);
-    const starts = new Date(`${date}T${start}:00`);
-    const ends = new Date(starts.getTime() + hours * 3600_000);
     setBusy(true);
-    const { error } = await supabase.rpc("book_venue", {
-      p_venue_id: venueId,
-      p_size_option_id: sizeId,
-      p_starts_at: starts.toISOString(),
-      p_ends_at: ends.toISOString(),
-      p_source: source,
-      p_external_name: source === "external" ? name : null,
-      p_external_phone: source === "external" ? phone : null,
-      p_external_notes: notes || null,
-    });
+    // Повтор еженедельно: бронируем каждую дату отдельно; занятые пропускаем
+    // и честно отчитываемся, сколько создано / сколько пропущено.
+    let created = 0;
+    const skipped: string[] = [];
+    for (let week = 0; week < repeatWeeks; week++) {
+      const starts = new Date(`${date}T${start}:00`);
+      starts.setDate(starts.getDate() + week * 7);
+      const ends = new Date(starts.getTime() + hours * 3600_000);
+      const { error } = await supabase.rpc("book_venue", {
+        p_venue_id: venueId,
+        p_size_option_id: sizeId,
+        p_starts_at: starts.toISOString(),
+        p_ends_at: ends.toISOString(),
+        p_source: source,
+        p_external_name: source === "external" ? name : null,
+        p_external_phone: source === "external" ? phone : null,
+        p_external_notes: notes || null,
+      });
+      if (error) {
+        if (error.message.includes("Time slot is full")) {
+          skipped.push(starts.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }));
+          continue;
+        }
+        setBusy(false);
+        toast.error(error.message);
+        return;
+      }
+      created += 1;
+    }
     setBusy(false);
-    if (error) {
-      toast.error(error.message === "Time slot is full" ? "Слот уже занят" : error.message);
+    if (created === 0) {
+      toast.error("Все даты заняты — броней не создано");
       return;
     }
-    toast.success("Бронь создана");
+    toast.success(
+      `Создано броней: ${created}` +
+        (skipped.length ? `. Занято (пропущено): ${skipped.join(", ")}` : ""),
+    );
     setName("");
     setPhone("");
     setNotes("");
+    setRepeatWeeks(1);
     onCreated();
   };
 
@@ -345,6 +386,22 @@ function AddBookingDialog({
                 />
               </div>
             </div>
+          </div>
+
+          <div>
+            <Label>Повтор</Label>
+            <Select value={String(repeatWeeks)} onValueChange={(v) => setRepeatWeeks(Number(v))}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Без повтора</SelectItem>
+                <SelectItem value="2">Еженедельно · 2 недели</SelectItem>
+                <SelectItem value="4">Еженедельно · 4 недели</SelectItem>
+                <SelectItem value="8">Еженедельно · 8 недель</SelectItem>
+                <SelectItem value="12">Еженедельно · 12 недель</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div>

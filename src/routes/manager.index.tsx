@@ -135,8 +135,11 @@ function ManagerHome() {
       toast.error(error.message);
       return;
     }
-    const created = (data as { created?: number } | null)?.created;
-    toast.success(`Серия одобрена${created ? `, создано игр: ${created}` : ""}`);
+    const res = data as { created?: number; skipped?: number } | null;
+    toast.success(
+      `Серия одобрена: игр создано ${res?.created ?? 0}` +
+        (res?.skipped ? `, занятых дат пропущено: ${res.skipped}` : ""),
+    );
     void load();
   };
 
@@ -158,13 +161,31 @@ function ManagerHome() {
     void load();
   };
 
-  const cancelBooking = async (id: string) => {
-    const { error } = await supabase.rpc("cancel_booking", { p_booking_id: id });
-    if (error) {
-      toast.error(error.message);
-      return;
+  const cancelBooking = async (b: ManagerBooking) => {
+    // Игровая бронь = отмена ИГРЫ: архив, снятие брони, нотификации о возврате.
+    if (b.source === "game" && b.game_id) {
+      const reason = window.prompt(
+        "Отменить игру? Участники получат уведомление о возврате оплаты.\nПричина (необязательно):",
+      );
+      if (reason === null) return;
+      const { error } = await supabase.rpc("manager_cancel_game", {
+        p_game_id: b.game_id,
+        p_reason: reason || null,
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Игра отменена, участники уведомлены");
+    } else {
+      if (!window.confirm("Отменить бронь?")) return;
+      const { error } = await supabase.rpc("cancel_booking", { p_booking_id: b.booking_id });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Бронь отменена");
     }
-    toast.success("Бронь отменена");
     void load();
   };
 
@@ -292,7 +313,7 @@ function ManagerHome() {
             </p>
           )}
           {upcoming.map((b) => (
-            <BookingRow key={b.booking_id} b={b} onCancel={() => cancelBooking(b.booking_id)} />
+            <BookingRow key={b.booking_id} b={b} onCancel={() => cancelBooking(b)} />
           ))}
         </CardContent>
       </Card>

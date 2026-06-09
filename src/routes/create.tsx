@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { FormationPreview } from "@/components/game/FormationPreview";
 import {
   Select,
@@ -91,6 +92,9 @@ function CreateGamePage() {
   // Время в партнёрском режиме выбирается ТОЛЬКО из сетки get_free_slots.
   const [durationMin, setDurationMin] = useState(90);
   const [slotPicked, setSlotPicked] = useState(false);
+  // Серия: «каждый четверг в 17:00» — заявка менеджеру через request_series.
+  const [seriesEnabled, setSeriesEnabled] = useState(false);
+  const [seriesWeeks, setSeriesWeeks] = useState(4);
   // Слайдер хранит РАЗМЕР КОМАНДЫ (5 = "играем 5 на 5"). Общее число
   // участников — players[0] * 2. Это привычнее футболистам и совпадает
   // с FORMATIONS_A в FormationPreview (там size — это сколько в команде).
@@ -284,6 +288,36 @@ function CreateGamePage() {
     // ...и свободный слот из сетки (занятое время выбрать невозможно).
     if (isPartnerMode && !slotPicked) {
       toast.error("Выбери свободное время в блоке «Когда»");
+      return;
+    }
+
+    // Серия: не создаём игру сразу, а отправляем заявку менеджеру.
+    // После approve_series игры и брони сгенерируются на свободные даты.
+    if (isPartnerMode && seriesEnabled) {
+      setSubmitting(true);
+      const dates = Array.from({ length: seriesWeeks }, (_, i) => {
+        const d = new Date(`${date}T00:00:00`);
+        d.setDate(d.getDate() + i * 7);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      });
+      const { error: serErr } = await supabase.rpc("request_series", {
+        p_venue_id: venueId,
+        p_size_option_id: sizeOptionId,
+        p_dates: dates,
+        p_start_time: timeStart,
+        p_end_time: timeEnd,
+        p_sport: sport,
+        p_level: level,
+        p_slots_total: slots,
+        p_notes: description || null,
+      });
+      setSubmitting(false);
+      if (serErr) {
+        toast.error(serErr.message);
+        return;
+      }
+      toast.success("Заявка на серию отправлена менеджеру стадиона");
+      navigate({ to: "/my" });
       return;
     }
     setSubmitting(true);
@@ -533,6 +567,48 @@ function CreateGamePage() {
                     <p className="text-sm text-muted-foreground">
                       Сначала выбери площадку и размер аренды — покажем свободное время.
                     </p>
+                  )}
+
+                  {/* Серия: повтор еженедельно с аппрувом менеджера. */}
+                  {slotPicked && (
+                    <div className="rounded-2xl border border-border/60 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">Повторять еженедельно</p>
+                          <p className="text-xs text-muted-foreground">
+                            Например «каждый четверг в {timeStart}». Заявку подтверждает менеджер стадиона.
+                          </p>
+                        </div>
+                        <Switch checked={seriesEnabled} onCheckedChange={setSeriesEnabled} />
+                      </div>
+                      {seriesEnabled && (
+                        <div className="mt-3 space-y-2">
+                          <Select
+                            value={String(seriesWeeks)}
+                            onValueChange={(v) => setSeriesWeeks(Number(v))}
+                          >
+                            <SelectTrigger className="h-10 w-full sm:w-56">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="2">2 недели подряд</SelectItem>
+                              <SelectItem value="4">4 недели подряд</SelectItem>
+                              <SelectItem value="8">8 недель подряд</SelectItem>
+                              <SelectItem value="12">12 недель подряд</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Даты:{" "}
+                            {Array.from({ length: seriesWeeks }, (_, i) => {
+                              const d = new Date(`${date}T00:00:00`);
+                              d.setDate(d.getDate() + i * 7);
+                              return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+                            }).join(", ")}
+                            . Занятые даты менеджер пропустит при подтверждении.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (
@@ -784,10 +860,16 @@ function CreateGamePage() {
                 className="w-full bg-gradient-brand text-primary-foreground shadow-glow hover:opacity-90"
               >
                 <Sparkles className="mr-1 h-4 w-4" />
-                {submitting ? "Публикуем…" : "Опубликовать игру"}
+                {submitting
+                  ? "Публикуем…"
+                  : isPartnerMode && seriesEnabled
+                    ? "Отправить заявку на серию"
+                    : "Опубликовать игру"}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
-                Игра сразу появится в каталоге и соберёт команду.
+                {isPartnerMode && seriesEnabled
+                  ? "Игры появятся после подтверждения менеджером стадиона."
+                  : "Игра сразу появится в каталоге и соберёт команду."}
               </p>
             </div>
           </aside>

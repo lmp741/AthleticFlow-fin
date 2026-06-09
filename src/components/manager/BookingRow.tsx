@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router";
+import { MessageCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,11 +66,21 @@ export function BookingRow({ b, onCancel }: { b: ManagerBooking; onCancel?: () =
           )}
         </div>
       </div>
-      {onCancel && b.status === "confirmed" && (
-        <Button size="sm" variant="outline" className="shrink-0" onClick={onCancel}>
-          Отменить
-        </Button>
-      )}
+      <div className="flex shrink-0 items-center gap-2">
+        {/* DM организатору: RLS пускает менеджера без дружбы (has_manager_relation). */}
+        {b.source === "game" && b.organizer_id && (
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/friends/$friendId" params={{ friendId: b.organizer_id }}>
+              <MessageCircle className="mr-1 h-4 w-4" /> Написать
+            </Link>
+          </Button>
+        )}
+        {onCancel && b.status === "confirmed" && (
+          <Button size="sm" variant="outline" onClick={onCancel}>
+            {b.source === "game" ? "Отменить игру" : "Отменить"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

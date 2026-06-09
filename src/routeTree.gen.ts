@@ -32,6 +32,7 @@ import { Route as UUsernameRouteImport } from './routes/u.$username'
 import { Route as StadiumsStadiumIdRouteImport } from './routes/stadiums_.$stadiumId'
 import { Route as ManagerScheduleRouteImport } from './routes/manager.schedule'
 import { Route as ManagerPricesRouteImport } from './routes/manager.prices'
+import { Route as ManagerChatsRouteImport } from './routes/manager.chats'
 import { Route as ManagerCalendarRouteImport } from './routes/manager.calendar'
 import { Route as GamesGameIdRouteImport } from './routes/games_.$gameId'
 import { Route as FriendsFriendIdRouteImport } from './routes/friends_.$friendId'
@@ -153,6 +154,11 @@ const ManagerPricesRoute = ManagerPricesRouteImport.update({
   path: '/prices',
   getParentRoute: () => ManagerRoute,
 } as any)
+const ManagerChatsRoute = ManagerChatsRouteImport.update({
+  id: '/chats',
+  path: '/chats',
+  getParentRoute: () => ManagerRoute,
+} as any)
 const ManagerCalendarRoute = ManagerCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/friends/$friendId': typeof FriendsFriendIdRoute
   '/games/$gameId': typeof GamesGameIdRoute
   '/manager/calendar': typeof ManagerCalendarRoute
+  '/manager/chats': typeof ManagerChatsRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
@@ -272,6 +279,7 @@ export interface FileRoutesByTo {
   '/friends/$friendId': typeof FriendsFriendIdRoute
   '/games/$gameId': typeof GamesGameIdRoute
   '/manager/calendar': typeof ManagerCalendarRoute
+  '/manager/chats': typeof ManagerChatsRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
@@ -304,6 +312,7 @@ export interface FileRoutesById {
   '/friends_/$friendId': typeof FriendsFriendIdRoute
   '/games_/$gameId': typeof GamesGameIdRoute
   '/manager/calendar': typeof ManagerCalendarRoute
+  '/manager/chats': typeof ManagerChatsRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums_/$stadiumId': typeof StadiumsStadiumIdRoute
@@ -337,6 +346,7 @@ export interface FileRouteTypes {
     | '/friends/$friendId'
     | '/games/$gameId'
     | '/manager/calendar'
+    | '/manager/chats'
     | '/manager/prices'
     | '/manager/schedule'
     | '/stadiums/$stadiumId'
@@ -366,6 +376,7 @@ export interface FileRouteTypes {
     | '/friends/$friendId'
     | '/games/$gameId'
     | '/manager/calendar'
+    | '/manager/chats'
     | '/manager/prices'
     | '/manager/schedule'
     | '/stadiums/$stadiumId'
@@ -397,6 +408,7 @@ export interface FileRouteTypes {
     | '/friends_/$friendId'
     | '/games_/$gameId'
     | '/manager/calendar'
+    | '/manager/chats'
     | '/manager/prices'
     | '/manager/schedule'
     | '/stadiums_/$stadiumId'
@@ -630,6 +642,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManagerPricesRouteImport
       parentRoute: typeof ManagerRoute
     }
+    '/manager/chats': {
+      id: '/manager/chats'
+      path: '/chats'
+      fullPath: '/manager/chats'
+      preLoaderRoute: typeof ManagerChatsRouteImport
+      parentRoute: typeof ManagerRoute
+    }
     '/manager/calendar': {
       id: '/manager/calendar'
       path: '/calendar'
@@ -748,6 +767,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ManagerRouteChildren {
   ManagerCalendarRoute: typeof ManagerCalendarRoute
+  ManagerChatsRoute: typeof ManagerChatsRoute
   ManagerPricesRoute: typeof ManagerPricesRoute
   ManagerScheduleRoute: typeof ManagerScheduleRoute
   ManagerIndexRoute: typeof ManagerIndexRoute
@@ -755,6 +775,7 @@ interface ManagerRouteChildren {
 
 const ManagerRouteChildren: ManagerRouteChildren = {
   ManagerCalendarRoute: ManagerCalendarRoute,
+  ManagerChatsRoute: ManagerChatsRoute,
   ManagerPricesRoute: ManagerPricesRoute,
   ManagerScheduleRoute: ManagerScheduleRoute,
   ManagerIndexRoute: ManagerIndexRoute,

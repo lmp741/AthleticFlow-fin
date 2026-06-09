@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Calendar, Clock, MapPin, Users, Trash2, ChevronDown, UserMinus, Download, FileText } from "lucide-react";
+import { Calendar, Clock, MapPin, Users, Trash2, ChevronDown, UserMinus, Download, FileText, MessageCircle } from "lucide-react";
 import { SiteHeader, SiteFooter } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,7 @@ interface MyGame {
   price_per_player: number;
   slots_total: number;
   status: string;
-  stadium: { name: string; address: string } | null;
+  stadium: { name: string; address: string; manager_id: string | null } | null;
   taken: number;
   paid: number;
   role: "organizer" | "player";
@@ -50,7 +50,7 @@ function MyPage() {
     const [{ data: org }, { data: parts }] = await Promise.all([
       supabase
         .from("games")
-        .select("id, sport, level, starts_at, ends_at, price_per_player, slots_total, status, stadium:stadiums(name,address)")
+        .select("id, sport, level, starts_at, ends_at, price_per_player, slots_total, status, stadium:stadiums(name,address,manager_id)")
         .eq("organizer_id", user.id)
         .order("starts_at", { ascending: true }),
       supabase
@@ -126,9 +126,15 @@ function MyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const removeGame = async (id: string) => {
+  const removeGame = async (g: MyGame) => {
+    // Деньги уже ушли — удаление закрыто и на сервере (trg_block_delete_paid_game),
+    // и тут. Отмена только через менеджера площадки (возврат оплат).
+    if (g.paid > 0) {
+      toast.error("В игре есть оплаты — отмена только через менеджера стадиона");
+      return;
+    }
     if (!confirm("Удалить игру? Это действие нельзя отменить.")) return;
-    const { error } = await supabase.from("games").delete().eq("id", id);
+    const { error } = await supabase.from("games").delete().eq("id", g.id);
     if (error) toast.error(error.message);
     else {
       toast.success("Игра удалена");
@@ -155,10 +161,12 @@ function MyPage() {
               </div>
             )}
             {organized.map((g) => (
-              <GameCard key={g.id} game={g} onDelete={() => removeGame(g.id)} />
+              <GameCard key={g.id} game={g} onDelete={() => removeGame(g)} />
             ))}
           </div>
         </div>
+
+        <MySeriesBlock />
 
         <div className="mt-14">
           <h2 className="font-display text-2xl font-bold">Я в команде</h2>
@@ -220,15 +228,133 @@ function GameCard({ game, onDelete }: { game: MyGame; onDelete?: () => void }) {
         <Button asChild size="sm" className="flex-1 bg-gradient-brand text-primary-foreground hover:opacity-90">
           <Link to="/games/$gameId" params={{ gameId: game.id }}>Открыть</Link>
         </Button>
-        {onDelete && (
+        {/* Пока оплат нет — организатор может удалить игру сам. */}
+        {onDelete && game.paid === 0 && (
           <Button onClick={onDelete} variant="outline" size="icon" aria-label="Удалить">
             <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
+        {/* Деньги ушли — отмена только через менеджера площадки (вернёт оплаты). */}
+        {onDelete && game.paid > 0 && game.stadium?.manager_id && (
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link to="/friends/$friendId" params={{ friendId: game.stadium.manager_id }}>
+              <MessageCircle className="mr-1 h-4 w-4" /> Связь с менеджером
+            </Link>
           </Button>
         )}
       </div>
 
       {game.role === "organizer" && <ParticipantsPanel gameId={game.id} game={game} />}
     </article>
+  );
+}
+
+// ============================================================
+// Мои заявки на серии игр («каждый четверг в 17:00»).
+// pending → можно отозвать; rejected → видна причина; approved →
+// игры уже созданы и висят в «Я организатор».
+// ============================================================
+interface SeriesRow {
+  id: string;
+  venue_id: string;
+  dates: string[];
+  start_time: string;
+  end_time: string;
+  sport: string;
+  level: string;
+  slots_total: number;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  reject_reason: string | null;
+  created_at: string;
+}
+
+const SERIES_STATUS: Record<SeriesRow["status"], { label: string; cls: string }> = {
+  pending: { label: "Ждёт менеджера", cls: "bg-amber-500/15 text-amber-700" },
+  approved: { label: "Одобрена", cls: "bg-emerald-500/15 text-emerald-700" },
+  rejected: { label: "Отклонена", cls: "bg-destructive/15 text-destructive" },
+  cancelled: { label: "Отозвана", cls: "bg-muted text-muted-foreground" },
+};
+
+function MySeriesBlock() {
+  const { user } = useAuth();
+  const [rows, setRows] = useState<SeriesRow[] | null>(null);
+  const [venueNames, setVenueNames] = useState<Record<string, string>>({});
+
+  const load = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("game_series")
+      .select("id, venue_id, dates, start_time, end_time, sport, level, slots_total, status, reject_reason, created_at")
+      .eq("organizer_id", user.id)
+      .order("created_at", { ascending: false });
+    const list = (data ?? []) as SeriesRow[];
+    setRows(list);
+    const ids = [...new Set(list.map((s) => s.venue_id))];
+    if (ids.length) {
+      const { data: vs } = await supabase.from("stadium_venues").select("id, name").in("id", ids);
+      setVenueNames(Object.fromEntries((vs ?? []).map((v) => [v.id, v.name])));
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const cancelSeries = async (id: string) => {
+    if (!confirm("Отозвать заявку на серию?")) return;
+    const { error } = await supabase.from("game_series").update({ status: "cancelled" }).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Заявка отозвана");
+      load();
+    }
+  };
+
+  if (!rows || rows.length === 0) return null;
+
+  return (
+    <div className="mt-14">
+      <h2 className="font-display text-2xl font-bold">Мои серии</h2>
+      <p className="text-sm text-muted-foreground">
+        Заявки на повторяющиеся брони. Подтверждает менеджер стадиона.
+      </p>
+      <div className="mt-6 space-y-3">
+        {rows.map((s) => (
+          <div
+            key={s.id}
+            className="flex flex-col gap-2 rounded-3xl border border-border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="min-w-0 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">
+                  {s.sport} · {venueNames[s.venue_id] ?? "Площадка"}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${SERIES_STATUS[s.status].cls}`}>
+                  {SERIES_STATUS[s.status].label}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {s.dates.length} дат · {s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)} ·{" "}
+                {s.dates
+                  .slice(0, 4)
+                  .map((d) => new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }))
+                  .join(", ")}
+                {s.dates.length > 4 && ` и ещё ${s.dates.length - 4}`}
+              </p>
+              {s.status === "rejected" && s.reject_reason && (
+                <p className="mt-1 text-xs text-destructive">Причина: {s.reject_reason}</p>
+              )}
+            </div>
+            {s.status === "pending" && (
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => cancelSeries(s.id)}>
+                Отозвать
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
