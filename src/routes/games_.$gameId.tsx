@@ -1189,7 +1189,7 @@ function GamePage() {
       </Dialog>
 
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Оплата участия</DialogTitle>
             <DialogDescription>
@@ -1665,7 +1665,7 @@ function EditGameButton({
         <Pencil className="mr-1 h-3.5 w-3.5" /> Редактировать
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Редактировать игру</DialogTitle>
             <DialogDescription>
@@ -2051,7 +2051,7 @@ function FinalizeGameButton({
         <Trophy className="mr-1 h-3.5 w-3.5" /> Подвести итог
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Подведём итог матча</DialogTitle>
             <DialogDescription>
@@ -2650,7 +2650,7 @@ function RatePlayerButton({
         <Star className="mr-1 h-3.5 w-3.5" /> Оценить
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2">
           <DialogHeader>
             <DialogTitle>Оценить {rateeName}</DialogTitle>
             <DialogDescription>
@@ -2884,7 +2884,7 @@ function InviteFriendButton({
         <UserPlus className="mr-1 h-4 w-4" /> Пригласить друга
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Пригласить друзей</DialogTitle>
             <DialogDescription>

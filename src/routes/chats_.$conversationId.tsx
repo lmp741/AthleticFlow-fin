@@ -799,7 +799,7 @@ function MembersDialog({
           <Users className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Беседа</DialogTitle>
           <DialogDescription>

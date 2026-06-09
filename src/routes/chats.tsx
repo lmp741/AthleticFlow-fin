@@ -453,7 +453,7 @@ function NewConversationDialog({
           <Plus className="mr-1 h-4 w-4" /> Новая беседа
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2">
         <DialogHeader>
           <DialogTitle>Новая беседа</DialogTitle>
           <DialogDescription>

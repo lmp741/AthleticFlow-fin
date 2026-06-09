@@ -305,7 +305,7 @@ function BanDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2">
         <DialogHeader>
           <DialogTitle>Забанить {userName}?</DialogTitle>
           <DialogDescription>
@@ -386,7 +386,7 @@ function EditUserDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2">
         <DialogHeader>
           <DialogTitle>Править пользователя</DialogTitle>
           <DialogDescription>Изменения сохранятся в БД и попадут в аудит-лог.</DialogDescription>

@@ -93,7 +93,7 @@ export function MessageActions({
       </DropdownMenu>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2">
           <DialogHeader>
             <DialogTitle>Редактировать сообщение</DialogTitle>
             <DialogDescription>Текст сообщения будет обновлён для всех.</DialogDescription>

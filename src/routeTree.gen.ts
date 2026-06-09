@@ -8,6 +8,8 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
+import { createServerRootRoute } from '@tanstack/react-start/server'
+
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StadiumsRouteImport } from './routes/stadiums'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -16,6 +18,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PersonalDataRouteImport } from './routes/personal-data'
 import { Route as MyRouteImport } from './routes/my'
+import { Route as ManagerRouteImport } from './routes/manager'
 import { Route as GamesRouteImport } from './routes/games'
 import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as CreateRouteImport } from './routes/create'
@@ -23,20 +26,27 @@ import { Route as ChatsRouteImport } from './routes/chats'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ManagerIndexRouteImport } from './routes/manager.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as UUsernameRouteImport } from './routes/u.$username'
 import { Route as StadiumsStadiumIdRouteImport } from './routes/stadiums_.$stadiumId'
+import { Route as ManagerScheduleRouteImport } from './routes/manager.schedule'
+import { Route as ManagerPricesRouteImport } from './routes/manager.prices'
+import { Route as ManagerCalendarRouteImport } from './routes/manager.calendar'
 import { Route as GamesGameIdRouteImport } from './routes/games_.$gameId'
 import { Route as FriendsFriendIdRouteImport } from './routes/friends_.$friendId'
 import { Route as ChatsConversationIdRouteImport } from './routes/chats_.$conversationId'
-import { Route as ApiPitchesRouteImport } from './routes/api/pitches'
-import { Route as ApiGeocodeSuggestRouteImport } from './routes/api/geocode-suggest'
-import { Route as ApiGeocodeRouteImport } from './routes/api/geocode'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminLogRouteImport } from './routes/admin.log'
 import { Route as AdminGoalsRouteImport } from './routes/admin.goals'
 import { Route as AdminGamesRouteImport } from './routes/admin.games'
-import { Route as ApiAdminGrantRoleRouteImport } from './routes/api/admin/grant-role'
+import { ServerRoute as ApiUploadServerRouteImport } from './routes/api/upload'
+import { ServerRoute as ApiPitchesServerRouteImport } from './routes/api/pitches'
+import { ServerRoute as ApiGeocodeSuggestServerRouteImport } from './routes/api/geocode-suggest'
+import { ServerRoute as ApiGeocodeServerRouteImport } from './routes/api/geocode'
+import { ServerRoute as ApiAdminGrantRoleServerRouteImport } from './routes/api/admin/grant-role'
+
+const rootServerRouteImport = createServerRootRoute()
 
 const StadiumsRoute = StadiumsRouteImport.update({
   id: '/stadiums',
@@ -71,6 +81,11 @@ const PersonalDataRoute = PersonalDataRouteImport.update({
 const MyRoute = MyRouteImport.update({
   id: '/my',
   path: '/my',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManagerRoute = ManagerRouteImport.update({
+  id: '/manager',
+  path: '/manager',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GamesRoute = GamesRouteImport.update({
@@ -108,6 +123,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManagerIndexRoute = ManagerIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ManagerRoute,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -123,6 +143,21 @@ const StadiumsStadiumIdRoute = StadiumsStadiumIdRouteImport.update({
   path: '/stadiums/$stadiumId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManagerScheduleRoute = ManagerScheduleRouteImport.update({
+  id: '/schedule',
+  path: '/schedule',
+  getParentRoute: () => ManagerRoute,
+} as any)
+const ManagerPricesRoute = ManagerPricesRouteImport.update({
+  id: '/prices',
+  path: '/prices',
+  getParentRoute: () => ManagerRoute,
+} as any)
+const ManagerCalendarRoute = ManagerCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => ManagerRoute,
+} as any)
 const GamesGameIdRoute = GamesGameIdRouteImport.update({
   id: '/games_/$gameId',
   path: '/games/$gameId',
@@ -136,21 +171,6 @@ const FriendsFriendIdRoute = FriendsFriendIdRouteImport.update({
 const ChatsConversationIdRoute = ChatsConversationIdRouteImport.update({
   id: '/chats_/$conversationId',
   path: '/chats/$conversationId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPitchesRoute = ApiPitchesRouteImport.update({
-  id: '/api/pitches',
-  path: '/api/pitches',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiGeocodeSuggestRoute = ApiGeocodeSuggestRouteImport.update({
-  id: '/api/geocode-suggest',
-  path: '/api/geocode-suggest',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiGeocodeRoute = ApiGeocodeRouteImport.update({
-  id: '/api/geocode',
-  path: '/api/geocode',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -173,10 +193,30 @@ const AdminGamesRoute = AdminGamesRouteImport.update({
   path: '/games',
   getParentRoute: () => AdminRoute,
 } as any)
-const ApiAdminGrantRoleRoute = ApiAdminGrantRoleRouteImport.update({
+const ApiUploadServerRoute = ApiUploadServerRouteImport.update({
+  id: '/api/upload',
+  path: '/api/upload',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
+const ApiPitchesServerRoute = ApiPitchesServerRouteImport.update({
+  id: '/api/pitches',
+  path: '/api/pitches',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
+const ApiGeocodeSuggestServerRoute = ApiGeocodeSuggestServerRouteImport.update({
+  id: '/api/geocode-suggest',
+  path: '/api/geocode-suggest',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
+const ApiGeocodeServerRoute = ApiGeocodeServerRouteImport.update({
+  id: '/api/geocode',
+  path: '/api/geocode',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
+const ApiAdminGrantRoleServerRoute = ApiAdminGrantRoleServerRouteImport.update({
   id: '/api/admin/grant-role',
   path: '/api/admin/grant-role',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => rootServerRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -187,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/create': typeof CreateRoute
   '/friends': typeof FriendsRoute
   '/games': typeof GamesRoute
+  '/manager': typeof ManagerRouteWithChildren
   '/my': typeof MyRoute
   '/personal-data': typeof PersonalDataRoute
   '/privacy': typeof PrivacyRoute
@@ -198,16 +239,16 @@ export interface FileRoutesByFullPath {
   '/admin/goals': typeof AdminGoalsRoute
   '/admin/log': typeof AdminLogRoute
   '/admin/users': typeof AdminUsersRoute
-  '/api/geocode': typeof ApiGeocodeRoute
-  '/api/geocode-suggest': typeof ApiGeocodeSuggestRoute
-  '/api/pitches': typeof ApiPitchesRoute
   '/chats/$conversationId': typeof ChatsConversationIdRoute
   '/friends/$friendId': typeof FriendsFriendIdRoute
   '/games/$gameId': typeof GamesGameIdRoute
+  '/manager/calendar': typeof ManagerCalendarRoute
+  '/manager/prices': typeof ManagerPricesRoute
+  '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
   '/u/$username': typeof UUsernameRoute
   '/admin/': typeof AdminIndexRoute
-  '/api/admin/grant-role': typeof ApiAdminGrantRoleRoute
+  '/manager/': typeof ManagerIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -227,16 +268,16 @@ export interface FileRoutesByTo {
   '/admin/goals': typeof AdminGoalsRoute
   '/admin/log': typeof AdminLogRoute
   '/admin/users': typeof AdminUsersRoute
-  '/api/geocode': typeof ApiGeocodeRoute
-  '/api/geocode-suggest': typeof ApiGeocodeSuggestRoute
-  '/api/pitches': typeof ApiPitchesRoute
   '/chats/$conversationId': typeof ChatsConversationIdRoute
   '/friends/$friendId': typeof FriendsFriendIdRoute
   '/games/$gameId': typeof GamesGameIdRoute
+  '/manager/calendar': typeof ManagerCalendarRoute
+  '/manager/prices': typeof ManagerPricesRoute
+  '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
   '/u/$username': typeof UUsernameRoute
   '/admin': typeof AdminIndexRoute
-  '/api/admin/grant-role': typeof ApiAdminGrantRoleRoute
+  '/manager': typeof ManagerIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -247,6 +288,7 @@ export interface FileRoutesById {
   '/create': typeof CreateRoute
   '/friends': typeof FriendsRoute
   '/games': typeof GamesRoute
+  '/manager': typeof ManagerRouteWithChildren
   '/my': typeof MyRoute
   '/personal-data': typeof PersonalDataRoute
   '/privacy': typeof PrivacyRoute
@@ -258,16 +300,16 @@ export interface FileRoutesById {
   '/admin/goals': typeof AdminGoalsRoute
   '/admin/log': typeof AdminLogRoute
   '/admin/users': typeof AdminUsersRoute
-  '/api/geocode': typeof ApiGeocodeRoute
-  '/api/geocode-suggest': typeof ApiGeocodeSuggestRoute
-  '/api/pitches': typeof ApiPitchesRoute
   '/chats_/$conversationId': typeof ChatsConversationIdRoute
   '/friends_/$friendId': typeof FriendsFriendIdRoute
   '/games_/$gameId': typeof GamesGameIdRoute
+  '/manager/calendar': typeof ManagerCalendarRoute
+  '/manager/prices': typeof ManagerPricesRoute
+  '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums_/$stadiumId': typeof StadiumsStadiumIdRoute
   '/u/$username': typeof UUsernameRoute
   '/admin/': typeof AdminIndexRoute
-  '/api/admin/grant-role': typeof ApiAdminGrantRoleRoute
+  '/manager/': typeof ManagerIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -279,6 +321,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/friends'
     | '/games'
+    | '/manager'
     | '/my'
     | '/personal-data'
     | '/privacy'
@@ -290,16 +333,16 @@ export interface FileRouteTypes {
     | '/admin/goals'
     | '/admin/log'
     | '/admin/users'
-    | '/api/geocode'
-    | '/api/geocode-suggest'
-    | '/api/pitches'
     | '/chats/$conversationId'
     | '/friends/$friendId'
     | '/games/$gameId'
+    | '/manager/calendar'
+    | '/manager/prices'
+    | '/manager/schedule'
     | '/stadiums/$stadiumId'
     | '/u/$username'
     | '/admin/'
-    | '/api/admin/grant-role'
+    | '/manager/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -319,16 +362,16 @@ export interface FileRouteTypes {
     | '/admin/goals'
     | '/admin/log'
     | '/admin/users'
-    | '/api/geocode'
-    | '/api/geocode-suggest'
-    | '/api/pitches'
     | '/chats/$conversationId'
     | '/friends/$friendId'
     | '/games/$gameId'
+    | '/manager/calendar'
+    | '/manager/prices'
+    | '/manager/schedule'
     | '/stadiums/$stadiumId'
     | '/u/$username'
     | '/admin'
-    | '/api/admin/grant-role'
+    | '/manager'
   id:
     | '__root__'
     | '/'
@@ -338,6 +381,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/friends'
     | '/games'
+    | '/manager'
     | '/my'
     | '/personal-data'
     | '/privacy'
@@ -349,16 +393,16 @@ export interface FileRouteTypes {
     | '/admin/goals'
     | '/admin/log'
     | '/admin/users'
-    | '/api/geocode'
-    | '/api/geocode-suggest'
-    | '/api/pitches'
     | '/chats_/$conversationId'
     | '/friends_/$friendId'
     | '/games_/$gameId'
+    | '/manager/calendar'
+    | '/manager/prices'
+    | '/manager/schedule'
     | '/stadiums_/$stadiumId'
     | '/u/$username'
     | '/admin/'
-    | '/api/admin/grant-role'
+    | '/manager/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -369,6 +413,7 @@ export interface RootRouteChildren {
   CreateRoute: typeof CreateRoute
   FriendsRoute: typeof FriendsRoute
   GamesRoute: typeof GamesRoute
+  ManagerRoute: typeof ManagerRouteWithChildren
   MyRoute: typeof MyRoute
   PersonalDataRoute: typeof PersonalDataRoute
   PrivacyRoute: typeof PrivacyRoute
@@ -376,15 +421,64 @@ export interface RootRouteChildren {
   ResetPhoneRoute: typeof ResetPhoneRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StadiumsRoute: typeof StadiumsRoute
-  ApiGeocodeRoute: typeof ApiGeocodeRoute
-  ApiGeocodeSuggestRoute: typeof ApiGeocodeSuggestRoute
-  ApiPitchesRoute: typeof ApiPitchesRoute
   ChatsConversationIdRoute: typeof ChatsConversationIdRoute
   FriendsFriendIdRoute: typeof FriendsFriendIdRoute
   GamesGameIdRoute: typeof GamesGameIdRoute
   StadiumsStadiumIdRoute: typeof StadiumsStadiumIdRoute
   UUsernameRoute: typeof UUsernameRoute
-  ApiAdminGrantRoleRoute: typeof ApiAdminGrantRoleRoute
+}
+export interface FileServerRoutesByFullPath {
+  '/api/geocode': typeof ApiGeocodeServerRoute
+  '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
+  '/api/pitches': typeof ApiPitchesServerRoute
+  '/api/upload': typeof ApiUploadServerRoute
+  '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
+}
+export interface FileServerRoutesByTo {
+  '/api/geocode': typeof ApiGeocodeServerRoute
+  '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
+  '/api/pitches': typeof ApiPitchesServerRoute
+  '/api/upload': typeof ApiUploadServerRoute
+  '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
+}
+export interface FileServerRoutesById {
+  __root__: typeof rootServerRouteImport
+  '/api/geocode': typeof ApiGeocodeServerRoute
+  '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
+  '/api/pitches': typeof ApiPitchesServerRoute
+  '/api/upload': typeof ApiUploadServerRoute
+  '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
+}
+export interface FileServerRouteTypes {
+  fileServerRoutesByFullPath: FileServerRoutesByFullPath
+  fullPaths:
+    | '/api/geocode'
+    | '/api/geocode-suggest'
+    | '/api/pitches'
+    | '/api/upload'
+    | '/api/admin/grant-role'
+  fileServerRoutesByTo: FileServerRoutesByTo
+  to:
+    | '/api/geocode'
+    | '/api/geocode-suggest'
+    | '/api/pitches'
+    | '/api/upload'
+    | '/api/admin/grant-role'
+  id:
+    | '__root__'
+    | '/api/geocode'
+    | '/api/geocode-suggest'
+    | '/api/pitches'
+    | '/api/upload'
+    | '/api/admin/grant-role'
+  fileServerRoutesById: FileServerRoutesById
+}
+export interface RootServerRouteChildren {
+  ApiGeocodeServerRoute: typeof ApiGeocodeServerRoute
+  ApiGeocodeSuggestServerRoute: typeof ApiGeocodeSuggestServerRoute
+  ApiPitchesServerRoute: typeof ApiPitchesServerRoute
+  ApiUploadServerRoute: typeof ApiUploadServerRoute
+  ApiAdminGrantRoleServerRoute: typeof ApiAdminGrantRoleServerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -438,6 +532,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manager': {
+      id: '/manager'
+      path: '/manager'
+      fullPath: '/manager'
+      preLoaderRoute: typeof ManagerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/games': {
       id: '/games'
       path: '/games'
@@ -487,6 +588,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manager/': {
+      id: '/manager/'
+      path: '/'
+      fullPath: '/manager/'
+      preLoaderRoute: typeof ManagerIndexRouteImport
+      parentRoute: typeof ManagerRoute
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
@@ -508,6 +616,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StadiumsStadiumIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manager/schedule': {
+      id: '/manager/schedule'
+      path: '/schedule'
+      fullPath: '/manager/schedule'
+      preLoaderRoute: typeof ManagerScheduleRouteImport
+      parentRoute: typeof ManagerRoute
+    }
+    '/manager/prices': {
+      id: '/manager/prices'
+      path: '/prices'
+      fullPath: '/manager/prices'
+      preLoaderRoute: typeof ManagerPricesRouteImport
+      parentRoute: typeof ManagerRoute
+    }
+    '/manager/calendar': {
+      id: '/manager/calendar'
+      path: '/calendar'
+      fullPath: '/manager/calendar'
+      preLoaderRoute: typeof ManagerCalendarRouteImport
+      parentRoute: typeof ManagerRoute
+    }
     '/games_/$gameId': {
       id: '/games_/$gameId'
       path: '/games/$gameId'
@@ -527,27 +656,6 @@ declare module '@tanstack/react-router' {
       path: '/chats/$conversationId'
       fullPath: '/chats/$conversationId'
       preLoaderRoute: typeof ChatsConversationIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/pitches': {
-      id: '/api/pitches'
-      path: '/api/pitches'
-      fullPath: '/api/pitches'
-      preLoaderRoute: typeof ApiPitchesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/geocode-suggest': {
-      id: '/api/geocode-suggest'
-      path: '/api/geocode-suggest'
-      fullPath: '/api/geocode-suggest'
-      preLoaderRoute: typeof ApiGeocodeSuggestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/geocode': {
-      id: '/api/geocode'
-      path: '/api/geocode'
-      fullPath: '/api/geocode'
-      preLoaderRoute: typeof ApiGeocodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -578,12 +686,44 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminGamesRouteImport
       parentRoute: typeof AdminRoute
     }
+  }
+}
+declare module '@tanstack/react-start/server' {
+  interface ServerFileRoutesByPath {
+    '/api/upload': {
+      id: '/api/upload'
+      path: '/api/upload'
+      fullPath: '/api/upload'
+      preLoaderRoute: typeof ApiUploadServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
+    '/api/pitches': {
+      id: '/api/pitches'
+      path: '/api/pitches'
+      fullPath: '/api/pitches'
+      preLoaderRoute: typeof ApiPitchesServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
+    '/api/geocode-suggest': {
+      id: '/api/geocode-suggest'
+      path: '/api/geocode-suggest'
+      fullPath: '/api/geocode-suggest'
+      preLoaderRoute: typeof ApiGeocodeSuggestServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
+    '/api/geocode': {
+      id: '/api/geocode'
+      path: '/api/geocode'
+      fullPath: '/api/geocode'
+      preLoaderRoute: typeof ApiGeocodeServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
     '/api/admin/grant-role': {
       id: '/api/admin/grant-role'
       path: '/api/admin/grant-role'
       fullPath: '/api/admin/grant-role'
-      preLoaderRoute: typeof ApiAdminGrantRoleRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof ApiAdminGrantRoleServerRouteImport
+      parentRoute: typeof rootServerRouteImport
     }
   }
 }
@@ -606,6 +746,23 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface ManagerRouteChildren {
+  ManagerCalendarRoute: typeof ManagerCalendarRoute
+  ManagerPricesRoute: typeof ManagerPricesRoute
+  ManagerScheduleRoute: typeof ManagerScheduleRoute
+  ManagerIndexRoute: typeof ManagerIndexRoute
+}
+
+const ManagerRouteChildren: ManagerRouteChildren = {
+  ManagerCalendarRoute: ManagerCalendarRoute,
+  ManagerPricesRoute: ManagerPricesRoute,
+  ManagerScheduleRoute: ManagerScheduleRoute,
+  ManagerIndexRoute: ManagerIndexRoute,
+}
+
+const ManagerRouteWithChildren =
+  ManagerRoute._addFileChildren(ManagerRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
@@ -614,6 +771,7 @@ const rootRouteChildren: RootRouteChildren = {
   CreateRoute: CreateRoute,
   FriendsRoute: FriendsRoute,
   GamesRoute: GamesRoute,
+  ManagerRoute: ManagerRouteWithChildren,
   MyRoute: MyRoute,
   PersonalDataRoute: PersonalDataRoute,
   PrivacyRoute: PrivacyRoute,
@@ -621,16 +779,22 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPhoneRoute: ResetPhoneRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   StadiumsRoute: StadiumsRoute,
-  ApiGeocodeRoute: ApiGeocodeRoute,
-  ApiGeocodeSuggestRoute: ApiGeocodeSuggestRoute,
-  ApiPitchesRoute: ApiPitchesRoute,
   ChatsConversationIdRoute: ChatsConversationIdRoute,
   FriendsFriendIdRoute: FriendsFriendIdRoute,
   GamesGameIdRoute: GamesGameIdRoute,
   StadiumsStadiumIdRoute: StadiumsStadiumIdRoute,
   UUsernameRoute: UUsernameRoute,
-  ApiAdminGrantRoleRoute: ApiAdminGrantRoleRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+const rootServerRouteChildren: RootServerRouteChildren = {
+  ApiGeocodeServerRoute: ApiGeocodeServerRoute,
+  ApiGeocodeSuggestServerRoute: ApiGeocodeSuggestServerRoute,
+  ApiPitchesServerRoute: ApiPitchesServerRoute,
+  ApiUploadServerRoute: ApiUploadServerRoute,
+  ApiAdminGrantRoleServerRoute: ApiAdminGrantRoleServerRoute,
+}
+export const serverRouteTree = rootServerRouteImport
+  ._addFileChildren(rootServerRouteChildren)
+  ._addFileTypes<FileServerRouteTypes>()
