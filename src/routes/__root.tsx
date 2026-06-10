@@ -69,8 +69,10 @@ export const Route = createRootRoute({
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Athletic Flow — найди игру и собери команду" },
       { name: "twitter:description", content: "Поиск игроков, бронирование площадок и оплата за 3 клика." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/379cce6c-926e-4852-bf74-95d95024545d/id-preview-6d5399b8--4d250271-ea5d-4807-874a-e57cab4db334.lovable.app-1777998887252.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/379cce6c-926e-4852-bf74-95d95024545d/id-preview-6d5399b8--4d250271-ea5d-4807-874a-e57cab4db334.lovable.app-1777998887252.png" },
+      // Превью — локальная картинка (положить файл в public/og-image.png).
+      // Раньше лежала на r2.dev (Cloudflare) — убрано для 152-ФЗ.
+      { property: "og:image", content: "https://af-sport.ru/og-image.png" },
+      { name: "twitter:image", content: "https://af-sport.ru/og-image.png" },
       // Геолокация и язык — для Яндекса и СНГ
       { httpEquiv: "Content-Language", content: "ru-RU" },
       { name: "geo.region", content: "RU-MOW" },
@@ -81,12 +83,8 @@ export const Route = createRootRoute({
       { name: "robots", content: "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" },
     ],
     links: [
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap",
-      },
+      // Шрифты локальные (@fontsource, бандлятся Vite в styles.css) —
+      // Google Fonts убран для 152-ФЗ (трансграничная передача).
       { rel: "stylesheet", href: appCss },
       // Favicon — PNG из public/favicon.png (заменил вручную).
       { rel: "icon", type: "image/png", href: "/favicon.png" },
@@ -129,7 +127,7 @@ export const Route = createRootRoute({
       // ssr:true — важно для TanStack Start (SSR-приложение).
       // referrer/url берутся из document/location на клиенте (script выполняется в браузере).
       {
-        children: `(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=109248844', 'ym');ym(109248844, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});`,
+        children: `(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=109248844', 'ym');ym(109248844, 'init', {ssr:true, webvisor:false, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});`,
       },
     ],
   }),

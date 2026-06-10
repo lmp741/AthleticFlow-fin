@@ -9,12 +9,15 @@ import {
   MapPin,
   Loader2,
   X,
-  FileText,
-  Download,
   Phone,
   Video as VideoCallIcon,
 } from "lucide-react";
 import { useCall } from "@/components/calls/CallProvider";
+import {
+  PrivateChatImage,
+  PrivateChatVideo,
+  PrivateChatDocument,
+} from "@/components/media/PrivateMedia";
 import { SiteHeader } from "@/components/layout/SiteShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -228,8 +231,19 @@ function ChatPage() {
   };
 
   useEffect(() => {
-    if (!myId || !areFriends) return;
+    // БАГ-ФИКС: раньше гейт был только по areFriends — для пары
+    // менеджер↔организатор (managerRelation) сообщения не грузились вообще
+    // и realtime не подписывался: написать можно, увидеть нельзя.
+    if (!myId || (!areFriends && !managerRelation)) return;
     loadMessages();
+    // Отмечаем входящие прочитанными — иначе счётчик непрочитанных
+    // в /manager/chats не сбрасывается никогда.
+    void supabase
+      .from("direct_messages")
+      .update({ read_at: new Date().toISOString() })
+      .eq("recipient_id", myId)
+      .eq("sender_id", friendId)
+      .is("read_at", null);
     const onInsert = (payload: { new: DM }) => {
       const m = payload.new;
       const involves =
@@ -252,7 +266,7 @@ function ChatPage() {
       supabase.removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myId, friendId, areFriends]);
+  }, [myId, friendId, areFriends, managerRelation]);
 
 
   useEffect(() => {
@@ -552,38 +566,14 @@ function ChatPage() {
                         <p className="text-sm">Сообщение удалено</p>
                       ) : (
                         <>
-                          {m.image_url && (
-                            <a href={m.image_url} target="_blank" rel="noopener noreferrer" className="block">
-                              <img
-                                src={m.image_url}
-                                alt="image"
-                                className="mb-1 max-h-80 rounded-xl object-cover"
-                              />
-                            </a>
-                          )}
-                          {m.video_url && (
-                            <video
-                              src={m.video_url}
-                              controls
-                              className="mb-1 max-h-80 rounded-xl"
-                            />
-                          )}
+                          {m.image_url && <PrivateChatImage src={m.image_url} />}
+                          {m.video_url && <PrivateChatVideo src={m.video_url} />}
                           {m.document_url && (
-                            <a
-                              href={m.document_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={m.document_name ?? undefined}
-                              className={`mb-1 flex items-center gap-2 rounded-xl px-3 py-2 ${
-                                mine ? "bg-white/15" : "bg-muted"
-                              }`}
-                            >
-                              <FileText className="h-4 w-4 shrink-0" />
-                              <span className="min-w-0 flex-1 truncate text-sm">
-                                {m.document_name ?? "Документ"}
-                              </span>
-                              <Download className="h-4 w-4 shrink-0 opacity-70" />
-                            </a>
+                            <PrivateChatDocument
+                              src={m.document_url}
+                              name={m.document_name}
+                              mine={mine}
+                            />
                           )}
                           {m.location_lat !== null && m.location_lng !== null && (
                             <a

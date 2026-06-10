@@ -8,8 +8,6 @@ import {
   Paperclip,
   MapPin,
   Loader2,
-  FileText,
-  Download,
   Users,
   UserPlus,
   LogOut,
@@ -20,6 +18,11 @@ import {
   UserMinus,
 } from "lucide-react";
 import { SiteHeader } from "@/components/layout/SiteShell";
+import {
+  PrivateChatImage,
+  PrivateChatVideo,
+  PrivateChatDocument,
+} from "@/components/media/PrivateMedia";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -479,30 +482,14 @@ function ConversationPage() {
                         <p className="text-sm">Сообщение удалено</p>
                       ) : (
                         <>
-                          {m.image_url && (
-                            <a href={m.image_url} target="_blank" rel="noopener noreferrer" className="block">
-                              <img src={m.image_url} alt="image" className="mb-1 max-h-80 rounded-xl object-cover" />
-                            </a>
-                          )}
-                          {m.video_url && (
-                            <video src={m.video_url} controls className="mb-1 max-h-80 rounded-xl" />
-                          )}
+                          {m.image_url && <PrivateChatImage src={m.image_url} />}
+                          {m.video_url && <PrivateChatVideo src={m.video_url} />}
                           {m.document_url && (
-                            <a
-                              href={m.document_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={m.document_name ?? undefined}
-                              className={`mb-1 flex items-center gap-2 rounded-xl px-3 py-2 ${
-                                mine ? "bg-white/15" : "bg-muted"
-                              }`}
-                            >
-                              <FileText className="h-4 w-4 shrink-0" />
-                              <span className="min-w-0 flex-1 truncate text-sm">
-                                {m.document_name ?? "Документ"}
-                              </span>
-                              <Download className="h-4 w-4 shrink-0 opacity-70" />
-                            </a>
+                            <PrivateChatDocument
+                              src={m.document_url}
+                              name={m.document_name}
+                              mine={mine}
+                            />
                           )}
                           {m.location_lat !== null && m.location_lng !== null && (
                             <a

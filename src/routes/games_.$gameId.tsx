@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { GameDraft } from "@/components/game/GameDraft";
+import { PrivateChatImage } from "@/components/media/PrivateMedia";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -1449,14 +1450,11 @@ function GameChat({ gameId, userId }: { gameId: string; userId: string }) {
                   {handle && !mine && <span className="ml-1 font-normal opacity-70">{handle}</span>}
                 </p>
                 {m.image_url && (
-                  <a href={m.image_url} target="_blank" rel="noopener noreferrer" className="mt-1 block">
-                    <img
-                      src={m.image_url}
-                      alt="Фото в чате"
-                      className="max-h-64 w-auto max-w-full rounded-xl border border-border/50 object-cover"
-                      loading="lazy"
-                    />
-                  </a>
+                  <PrivateChatImage
+                    src={m.image_url}
+                    linkClassName="mt-1 block"
+                    imgClassName="max-h-64 w-auto max-w-full rounded-xl border border-border/50 object-cover"
+                  />
                 )}
                 {m.body && (
                   <p

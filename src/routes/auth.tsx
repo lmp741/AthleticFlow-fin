@@ -21,6 +21,11 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  // 152-ФЗ: два РАЗДЕЛЬНЫХ согласия при регистрации (объединять нельзя):
+  //   1) обработка ПД (политика + согласие);
+  //   2) распространение ПД (публичный профиль/аватар/медиа — суть сервиса).
+  const [pdConsent, setPdConsent] = useState(false);
+  const [pdPublicConsent, setPdPublicConsent] = useState(false);
   // После успешного signUp — фиксируем флаг, чтобы:
   //   1) Не редиректить на /games даже если Supabase отдал нам session
   //      (email confirmation off в проекте — это рабочий сценарий).
@@ -36,12 +41,23 @@ function AuthPage() {
     setLoading(true);
     try {
       if (mode === "signup") {
+        if (!pdConsent || !pdPublicConsent) {
+          toast.error("Для регистрации нужно дать оба согласия на обработку данных");
+          setLoading(false);
+          return;
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/`,
-            data: { display_name: name || email.split("@")[0] },
+            data: {
+              display_name: name || email.split("@")[0],
+              // Фиксация факта согласий (152-ФЗ): что и когда принял пользователь.
+              pd_consent: true,
+              pd_public_consent: true,
+              pd_consented_at: new Date().toISOString(),
+            },
           },
         });
         if (error) throw error;
@@ -139,9 +155,46 @@ function AuthPage() {
               className="mt-1 h-11"
             />
           </div>
+          {mode === "signup" && (
+            <div className="space-y-2.5 rounded-2xl border border-border/60 bg-muted/20 p-3">
+              <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={pdConsent}
+                  onChange={(e) => setPdConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>
+                  Я ознакомился с{" "}
+                  <Link to="/privacy" target="_blank" className="text-primary hover:underline">
+                    Политикой конфиденциальности
+                  </Link>{" "}
+                  и даю{" "}
+                  <Link to="/personal-data" target="_blank" className="text-primary hover:underline">
+                    согласие на обработку персональных данных
+                  </Link>
+                  .
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-relaxed text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={pdPublicConsent}
+                  onChange={(e) => setPdPublicConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>
+                  Даю согласие на распространение персональных данных, разрешённых мной для
+                  распространения: публичный профиль (имя, никнейм, аватар, уровень), фото и видео
+                  профиля, статистика игр и рейтинги. Телефон публикуется только если я включу это в
+                  настройках профиля.
+                </span>
+              </label>
+            </div>
+          )}
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || (mode === "signup" && (!pdConsent || !pdPublicConsent))}
             size="lg"
             className="w-full bg-gradient-brand text-primary-foreground hover:opacity-90"
           >

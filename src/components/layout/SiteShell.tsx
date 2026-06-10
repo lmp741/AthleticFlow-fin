@@ -1,10 +1,11 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Menu, Plus, LogIn, LogOut, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/brand/Logo";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { NotificationsBell } from "@/components/layout/NotificationsBell";
 import {
   Sheet,
@@ -27,6 +28,48 @@ const authedNav: NavItem[] = [
   { to: "/chats", label: "Общение" },
   { to: "/profile", label: "Профиль" },
 ];
+
+// Кэш ролей на сессию, чтобы хедер не дёргал БД на каждой странице.
+let rolesCache: { uid: string; admin: boolean; manager: boolean } | null = null;
+
+/** Ссылки «Админка»/«Менеджер» в хедере — для админа и менеджера стадиона. */
+function useHeaderRoles(userId: string | undefined) {
+  const [roles, setRoles] = useState<{ admin: boolean; manager: boolean }>(
+    rolesCache && rolesCache.uid === userId
+      ? { admin: rolesCache.admin, manager: rolesCache.manager }
+      : { admin: false, manager: false },
+  );
+
+  useEffect(() => {
+    if (!userId) {
+      rolesCache = null;
+      setRoles({ admin: false, manager: false });
+      return;
+    }
+    if (rolesCache?.uid === userId) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: adminRow }, { data: managed }] = await Promise.all([
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId)
+          .eq("role", "admin")
+          .maybeSingle(),
+        supabase.from("stadiums").select("id").eq("manager_id", userId).limit(1),
+      ]);
+      if (cancelled) return;
+      const next = { uid: userId, admin: !!adminRow, manager: (managed ?? []).length > 0 };
+      rolesCache = next;
+      setRoles({ admin: next.admin, manager: next.manager });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  return roles;
+}
 
 function UserSearch({ onSubmit }: { onSubmit?: () => void }) {
   const navigate = useNavigate();
@@ -68,8 +111,13 @@ const navLinkActiveClass = "!text-primary font-semibold after:!opacity-100";
 export function SiteHeader() {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const { admin, manager } = useHeaderRoles(user?.id);
 
-  const nav = user ? [...baseNav, ...authedNav] : baseNav;
+  const roleNav: NavItem[] = [
+    ...(manager ? [{ to: "/manager", label: "Менеджер" }] : []),
+    ...(admin ? [{ to: "/admin", label: "Админка" }] : []),
+  ];
+  const nav = user ? [...baseNav, ...authedNav, ...roleNav] : baseNav;
 
   const closeSheet = () => setOpen(false);
 
@@ -249,8 +297,8 @@ export function SiteFooter() {
             </p>
             <ul className="space-y-1.5">
               <li>
-                <a href="mailto:hello@athleticflow.app" className="hover:text-foreground">
-                  hello@athleticflow.app
+                <a href="mailto:hello@af-sport.ru" className="hover:text-foreground">
+                  hello@af-sport.ru
                 </a>
               </li>
             </ul>

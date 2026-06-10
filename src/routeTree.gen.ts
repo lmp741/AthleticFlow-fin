@@ -43,6 +43,7 @@ import { Route as AdminGoalsRouteImport } from './routes/admin.goals'
 import { Route as AdminGamesRouteImport } from './routes/admin.games'
 import { ServerRoute as ApiUploadServerRouteImport } from './routes/api/upload'
 import { ServerRoute as ApiPitchesServerRouteImport } from './routes/api/pitches'
+import { ServerRoute as ApiMediaSignServerRouteImport } from './routes/api/media-sign'
 import { ServerRoute as ApiGeocodeSuggestServerRouteImport } from './routes/api/geocode-suggest'
 import { ServerRoute as ApiGeocodeServerRouteImport } from './routes/api/geocode'
 import { ServerRoute as ApiAdminGrantRoleServerRouteImport } from './routes/api/admin/grant-role'
@@ -207,6 +208,11 @@ const ApiUploadServerRoute = ApiUploadServerRouteImport.update({
 const ApiPitchesServerRoute = ApiPitchesServerRouteImport.update({
   id: '/api/pitches',
   path: '/api/pitches',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
+const ApiMediaSignServerRoute = ApiMediaSignServerRouteImport.update({
+  id: '/api/media-sign',
+  path: '/api/media-sign',
   getParentRoute: () => rootServerRouteImport,
 } as any)
 const ApiGeocodeSuggestServerRoute = ApiGeocodeSuggestServerRouteImport.update({
@@ -442,6 +448,7 @@ export interface RootRouteChildren {
 export interface FileServerRoutesByFullPath {
   '/api/geocode': typeof ApiGeocodeServerRoute
   '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
+  '/api/media-sign': typeof ApiMediaSignServerRoute
   '/api/pitches': typeof ApiPitchesServerRoute
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
@@ -449,6 +456,7 @@ export interface FileServerRoutesByFullPath {
 export interface FileServerRoutesByTo {
   '/api/geocode': typeof ApiGeocodeServerRoute
   '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
+  '/api/media-sign': typeof ApiMediaSignServerRoute
   '/api/pitches': typeof ApiPitchesServerRoute
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
@@ -457,6 +465,7 @@ export interface FileServerRoutesById {
   __root__: typeof rootServerRouteImport
   '/api/geocode': typeof ApiGeocodeServerRoute
   '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
+  '/api/media-sign': typeof ApiMediaSignServerRoute
   '/api/pitches': typeof ApiPitchesServerRoute
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
@@ -466,6 +475,7 @@ export interface FileServerRouteTypes {
   fullPaths:
     | '/api/geocode'
     | '/api/geocode-suggest'
+    | '/api/media-sign'
     | '/api/pitches'
     | '/api/upload'
     | '/api/admin/grant-role'
@@ -473,6 +483,7 @@ export interface FileServerRouteTypes {
   to:
     | '/api/geocode'
     | '/api/geocode-suggest'
+    | '/api/media-sign'
     | '/api/pitches'
     | '/api/upload'
     | '/api/admin/grant-role'
@@ -480,6 +491,7 @@ export interface FileServerRouteTypes {
     | '__root__'
     | '/api/geocode'
     | '/api/geocode-suggest'
+    | '/api/media-sign'
     | '/api/pitches'
     | '/api/upload'
     | '/api/admin/grant-role'
@@ -488,6 +500,7 @@ export interface FileServerRouteTypes {
 export interface RootServerRouteChildren {
   ApiGeocodeServerRoute: typeof ApiGeocodeServerRoute
   ApiGeocodeSuggestServerRoute: typeof ApiGeocodeSuggestServerRoute
+  ApiMediaSignServerRoute: typeof ApiMediaSignServerRoute
   ApiPitchesServerRoute: typeof ApiPitchesServerRoute
   ApiUploadServerRoute: typeof ApiUploadServerRoute
   ApiAdminGrantRoleServerRoute: typeof ApiAdminGrantRoleServerRoute
@@ -723,6 +736,13 @@ declare module '@tanstack/react-start/server' {
       preLoaderRoute: typeof ApiPitchesServerRouteImport
       parentRoute: typeof rootServerRouteImport
     }
+    '/api/media-sign': {
+      id: '/api/media-sign'
+      path: '/api/media-sign'
+      fullPath: '/api/media-sign'
+      preLoaderRoute: typeof ApiMediaSignServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
     '/api/geocode-suggest': {
       id: '/api/geocode-suggest'
       path: '/api/geocode-suggest'
@@ -812,6 +832,7 @@ export const routeTree = rootRouteImport
 const rootServerRouteChildren: RootServerRouteChildren = {
   ApiGeocodeServerRoute: ApiGeocodeServerRoute,
   ApiGeocodeSuggestServerRoute: ApiGeocodeSuggestServerRoute,
+  ApiMediaSignServerRoute: ApiMediaSignServerRoute,
   ApiPitchesServerRoute: ApiPitchesServerRoute,
   ApiUploadServerRoute: ApiUploadServerRoute,
   ApiAdminGrantRoleServerRoute: ApiAdminGrantRoleServerRoute,
