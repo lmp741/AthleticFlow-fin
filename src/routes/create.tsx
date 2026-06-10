@@ -95,6 +95,8 @@ function CreateGamePage() {
   // Серия: «каждый четверг в 17:00» — заявка менеджеру через request_series.
   const [seriesEnabled, setSeriesEnabled] = useState(false);
   const [seriesWeeks, setSeriesWeeks] = useState(4);
+  // Интервал повтора в днях: 7 = еженедельно, 14 = раз в две недели.
+  const [seriesIntervalDays, setSeriesIntervalDays] = useState(7);
   // Слайдер хранит РАЗМЕР КОМАНДЫ (5 = "играем 5 на 5"). Общее число
   // участников — players[0] * 2. Это привычнее футболистам и совпадает
   // с FORMATIONS_A в FormationPreview (там size — это сколько в команде).
@@ -297,7 +299,7 @@ function CreateGamePage() {
       setSubmitting(true);
       const dates = Array.from({ length: seriesWeeks }, (_, i) => {
         const d = new Date(`${date}T00:00:00`);
-        d.setDate(d.getDate() + i * 7);
+        d.setDate(d.getDate() + i * seriesIntervalDays);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       });
       const { error: serErr } = await supabase.rpc("request_series", {
@@ -574,7 +576,7 @@ function CreateGamePage() {
                     <div className="rounded-2xl border border-border/60 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold">Повторять еженедельно</p>
+                          <p className="text-sm font-semibold">Повторять</p>
                           <p className="text-xs text-muted-foreground">
                             Например «каждый четверг в {timeStart}». Заявку подтверждает менеджер стадиона.
                           </p>
@@ -583,25 +585,39 @@ function CreateGamePage() {
                       </div>
                       {seriesEnabled && (
                         <div className="mt-3 space-y-2">
-                          <Select
-                            value={String(seriesWeeks)}
-                            onValueChange={(v) => setSeriesWeeks(Number(v))}
-                          >
-                            <SelectTrigger className="h-10 w-full sm:w-56">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="2">2 недели подряд</SelectItem>
-                              <SelectItem value="4">4 недели подряд</SelectItem>
-                              <SelectItem value="8">8 недель подряд</SelectItem>
-                              <SelectItem value="12">12 недель подряд</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Select
+                              value={String(seriesIntervalDays)}
+                              onValueChange={(v) => setSeriesIntervalDays(Number(v))}
+                            >
+                              <SelectTrigger className="h-10 w-full sm:w-56">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="7">Каждую неделю</SelectItem>
+                                <SelectItem value="14">Раз в две недели</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              value={String(seriesWeeks)}
+                              onValueChange={(v) => setSeriesWeeks(Number(v))}
+                            >
+                              <SelectTrigger className="h-10 w-full sm:w-56">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="2">2 раза</SelectItem>
+                                <SelectItem value="4">4 раза</SelectItem>
+                                <SelectItem value="8">8 раз</SelectItem>
+                                <SelectItem value="12">12 раз</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             Даты:{" "}
                             {Array.from({ length: seriesWeeks }, (_, i) => {
                               const d = new Date(`${date}T00:00:00`);
-                              d.setDate(d.getDate() + i * 7);
+                              d.setDate(d.getDate() + i * seriesIntervalDays);
                               return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
                             }).join(", ")}
                             . Занятые даты менеджер пропустит при подтверждении.
