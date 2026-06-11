@@ -381,8 +381,8 @@ validateSearch: (search) => {
 
 | # | Задача | Подробнее |
 | --- | --- | --- |
-| #5 | Web Push авто-fire | Триггеры PG → `pg_net` → `send-push` Edge Function (старая была на Cloud). На self-hosted нужно: 1) сгенерить новые VAPID-ключи; 2) поднять `send-push` как Deno-функцию в self-hosted Edge Runtime ИЛИ как server-route в нашем Node.js (`/api/internal/send-push`); 3) переписать триггеры `trg_game_message_notify`, `trg_rating_received_notify` чтобы `pg_net` стучался на новый endpoint; 4) попросить юзеров переподписаться (VAPID-ключи новые). |
-| #21 | Расширенные нотификации | Новые типы: новое сообщение в чате, MVP-плашка, аппрув заявки. Часть уже работает (запись в `notifications`), не хватает push. |
+| #5 | ~~Web Push авто-fire~~ | ✅ СДЕЛАНО 10.06.2026 (миграция 20260610160000): единый триггер на INSERT в `notifications` → pg_net → `/api/internal/send-push` (Node, web-push, VAPID) + триггер на `direct_messages`. `invoke_send_push` → no-op (старые триггеры пишут в notifications сами). Старые подписки вычищены, клиент пересоздаёт подписку при смене ключа. Настройка: VAPID/secret в .env + `ALTER DATABASE postgres SET app.push_secret` (см. DEPLOY-инструкцию). |
+| #21 | ~~Расширенные нотификации~~ | ✅ Закрыто тем же триггером: ЛЮБОЙ insert в `notifications` теперь = bell + push, включая все будущие типы. DM-пуши отдельным триггером. |
 | #28 | ~~Админка менеджера стадиона~~ | ✅ СДЕЛАНО 09.06.2026 (ядро: Записи / Календарь / График / Цены). См. §9. |
 | #28b | Админка менеджера: Финансы/Безопасность/Настройки | Баланс + заявка на вывод средств (нужна финансовая модель), PIN/смена пароля, реквизиты компании. По референсу. |
 | #33 | ~~Защита приватных медиа~~ | ✅ СДЕЛАНО 10.06.2026: `/api/media-sign` (Bearer → подписанные ссылки, HMAC, TTL 6ч) + `/api/media` (проверка подписи, стриминг с Range для видео). Клиент: PrivateChatImage/Video/Document с кэшем подписей (`src/components/media/PrivateMedia.tsx`) — старые /uploads/-URL из БД работают без миграции. ТРЕБУЕТ настройки nginx (см. §11). avatars/profile-media остаются публичными by design. |

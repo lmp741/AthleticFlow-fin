@@ -79,6 +79,21 @@ export async function enablePush(): Promise<{ ok: boolean; reason?: string }> {
 
   // 3. subscription
   let sub = await reg.pushManager.getSubscription();
+  // Если подписка существует, но подписана ДРУГИМ VAPID-ключом (остатки от
+  // Cloud-эры) — пересоздаём: пуши на неё всё равно не доставятся (403).
+  if (sub) {
+    const currentKey = sub.options?.applicationServerKey
+      ? btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey)))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "")
+      : null;
+    if (currentKey && currentKey !== VAPID_PUBLIC_KEY) {
+      await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+      await sub.unsubscribe();
+      sub = null;
+    }
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,

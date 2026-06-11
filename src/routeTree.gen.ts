@@ -47,6 +47,7 @@ import { ServerRoute as ApiMediaSignServerRouteImport } from './routes/api/media
 import { ServerRoute as ApiMediaServerRouteImport } from './routes/api/media'
 import { ServerRoute as ApiGeocodeSuggestServerRouteImport } from './routes/api/geocode-suggest'
 import { ServerRoute as ApiGeocodeServerRouteImport } from './routes/api/geocode'
+import { ServerRoute as ApiInternalSendPushServerRouteImport } from './routes/api/internal.send-push'
 import { ServerRoute as ApiAdminGrantRoleServerRouteImport } from './routes/api/admin/grant-role'
 
 const rootServerRouteImport = createServerRootRoute()
@@ -231,6 +232,12 @@ const ApiGeocodeServerRoute = ApiGeocodeServerRouteImport.update({
   path: '/api/geocode',
   getParentRoute: () => rootServerRouteImport,
 } as any)
+const ApiInternalSendPushServerRoute =
+  ApiInternalSendPushServerRouteImport.update({
+    id: '/api/internal/send-push',
+    path: '/api/internal/send-push',
+    getParentRoute: () => rootServerRouteImport,
+  } as any)
 const ApiAdminGrantRoleServerRoute = ApiAdminGrantRoleServerRouteImport.update({
   id: '/api/admin/grant-role',
   path: '/api/admin/grant-role',
@@ -459,6 +466,7 @@ export interface FileServerRoutesByFullPath {
   '/api/pitches': typeof ApiPitchesServerRoute
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
+  '/api/internal/send-push': typeof ApiInternalSendPushServerRoute
 }
 export interface FileServerRoutesByTo {
   '/api/geocode': typeof ApiGeocodeServerRoute
@@ -468,6 +476,7 @@ export interface FileServerRoutesByTo {
   '/api/pitches': typeof ApiPitchesServerRoute
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
+  '/api/internal/send-push': typeof ApiInternalSendPushServerRoute
 }
 export interface FileServerRoutesById {
   __root__: typeof rootServerRouteImport
@@ -478,6 +487,7 @@ export interface FileServerRoutesById {
   '/api/pitches': typeof ApiPitchesServerRoute
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
+  '/api/internal/send-push': typeof ApiInternalSendPushServerRoute
 }
 export interface FileServerRouteTypes {
   fileServerRoutesByFullPath: FileServerRoutesByFullPath
@@ -489,6 +499,7 @@ export interface FileServerRouteTypes {
     | '/api/pitches'
     | '/api/upload'
     | '/api/admin/grant-role'
+    | '/api/internal/send-push'
   fileServerRoutesByTo: FileServerRoutesByTo
   to:
     | '/api/geocode'
@@ -498,6 +509,7 @@ export interface FileServerRouteTypes {
     | '/api/pitches'
     | '/api/upload'
     | '/api/admin/grant-role'
+    | '/api/internal/send-push'
   id:
     | '__root__'
     | '/api/geocode'
@@ -507,6 +519,7 @@ export interface FileServerRouteTypes {
     | '/api/pitches'
     | '/api/upload'
     | '/api/admin/grant-role'
+    | '/api/internal/send-push'
   fileServerRoutesById: FileServerRoutesById
 }
 export interface RootServerRouteChildren {
@@ -517,6 +530,7 @@ export interface RootServerRouteChildren {
   ApiPitchesServerRoute: typeof ApiPitchesServerRoute
   ApiUploadServerRoute: typeof ApiUploadServerRoute
   ApiAdminGrantRoleServerRoute: typeof ApiAdminGrantRoleServerRoute
+  ApiInternalSendPushServerRoute: typeof ApiInternalSendPushServerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -777,6 +791,13 @@ declare module '@tanstack/react-start/server' {
       preLoaderRoute: typeof ApiGeocodeServerRouteImport
       parentRoute: typeof rootServerRouteImport
     }
+    '/api/internal/send-push': {
+      id: '/api/internal/send-push'
+      path: '/api/internal/send-push'
+      fullPath: '/api/internal/send-push'
+      preLoaderRoute: typeof ApiInternalSendPushServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
     '/api/admin/grant-role': {
       id: '/api/admin/grant-role'
       path: '/api/admin/grant-role'
@@ -857,6 +878,7 @@ const rootServerRouteChildren: RootServerRouteChildren = {
   ApiPitchesServerRoute: ApiPitchesServerRoute,
   ApiUploadServerRoute: ApiUploadServerRoute,
   ApiAdminGrantRoleServerRoute: ApiAdminGrantRoleServerRoute,
+  ApiInternalSendPushServerRoute: ApiInternalSendPushServerRoute,
 }
 export const serverRouteTree = rootServerRouteImport
   ._addFileChildren(rootServerRouteChildren)
