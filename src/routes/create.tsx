@@ -586,32 +586,42 @@ function CreateGamePage() {
                       {seriesEnabled && (
                         <div className="mt-3 space-y-2">
                           <div className="flex flex-col gap-2 sm:flex-row">
-                            <Select
-                              value={String(seriesIntervalDays)}
-                              onValueChange={(v) => setSeriesIntervalDays(Number(v))}
-                            >
-                              <SelectTrigger className="h-10 w-full sm:w-56">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="7">Каждую неделю</SelectItem>
-                                <SelectItem value="14">Раз в две недели</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Select
-                              value={String(seriesWeeks)}
-                              onValueChange={(v) => setSeriesWeeks(Number(v))}
-                            >
-                              <SelectTrigger className="h-10 w-full sm:w-56">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="2">2 раза</SelectItem>
-                                <SelectItem value="4">4 раза</SelectItem>
-                                <SelectItem value="8">8 раз</SelectItem>
-                                <SelectItem value="12">12 раз</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <div className="w-full sm:w-56">
+                              <p className="mb-1 text-xs font-medium text-muted-foreground">
+                                Как часто
+                              </p>
+                              <Select
+                                value={String(seriesIntervalDays)}
+                                onValueChange={(v) => setSeriesIntervalDays(Number(v))}
+                              >
+                                <SelectTrigger className="h-10 w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="7">Каждую неделю</SelectItem>
+                                  <SelectItem value="14">Раз в две недели</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="w-full sm:w-56">
+                              <p className="mb-1 text-xs font-medium text-muted-foreground">
+                                Сколько игр в серии
+                              </p>
+                              <Select
+                                value={String(seriesWeeks)}
+                                onValueChange={(v) => setSeriesWeeks(Number(v))}
+                              >
+                                <SelectTrigger className="h-10 w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="2">2 игры</SelectItem>
+                                  <SelectItem value="4">4 игры</SelectItem>
+                                  <SelectItem value="8">8 игр</SelectItem>
+                                  <SelectItem value="12">12 игр</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Даты:{" "}

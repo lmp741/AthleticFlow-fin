@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,7 +46,13 @@ function ManagerCalendar() {
   const [month, setMonth] = useState(today.getMonth()); // 0-based
   const [selected, setSelected] = useState<string>(toDateKey(today));
   const [bookings, setBookings] = useState<ManagerBooking[]>([]);
+  // Pending-заявки на серии: показываем их даты в календаре жёлтым,
+  // чтобы менеджер видел ожидающие решения прямо в сетке месяца.
+  const [pendingSeriesDates, setPendingSeriesDates] = useState<
+    Record<string, { venue: string; time: string }[]>
+  >({});
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { venues } = useManager();
 
   const load = useCallback(async () => {
     const from = new Date(year, month, 1);
@@ -56,7 +62,26 @@ function ManagerCalendar() {
     } catch {
       toast.error("Не удалось загрузить брони");
     }
-  }, [year, month]);
+
+    // Даты pending-серий в видимом месяце.
+    const venueIds = venues.map((v) => v.id);
+    if (venueIds.length) {
+      const { data: ss } = await supabase
+        .from("game_series")
+        .select("venue_id, dates, start_time, end_time")
+        .in("venue_id", venueIds)
+        .eq("status", "pending");
+      const map: Record<string, { venue: string; time: string }[]> = {};
+      for (const s of ss ?? []) {
+        const vName = venues.find((v) => v.id === s.venue_id)?.name ?? "Площадка";
+        const time = `${String(s.start_time).slice(0, 5)}–${String(s.end_time).slice(0, 5)}`;
+        for (const d of s.dates as string[]) {
+          (map[d] = map[d] ?? []).push({ venue: vName, time });
+        }
+      }
+      setPendingSeriesDates(map);
+    }
+  }, [year, month, venues]);
 
   useEffect(() => {
     void load();
@@ -66,6 +91,7 @@ function ManagerCalendar() {
     const ch = supabase
       .channel("manager-calendar-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "venue_bookings" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_series" }, () => load())
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
@@ -178,14 +204,20 @@ function ManagerCalendar() {
                   ].join(" ")}
                 >
                   {Number(key.slice(8))}
-                  {(byDay[key]?.length ?? 0) > 0 && (
-                    <span
-                      className={[
-                        "absolute bottom-1 h-1.5 w-1.5 rounded-full",
-                        key === selected ? "bg-primary-foreground" : "bg-primary",
-                      ].join(" ")}
-                    />
-                  )}
+                  <span className="absolute bottom-1 flex gap-0.5">
+                    {(byDay[key]?.length ?? 0) > 0 && (
+                      <span
+                        className={[
+                          "h-1.5 w-1.5 rounded-full",
+                          key === selected ? "bg-primary-foreground" : "bg-primary",
+                        ].join(" ")}
+                      />
+                    )}
+                    {/* Жёлтая метка: на эту дату есть pending-заявка на серию */}
+                    {(pendingSeriesDates[key]?.length ?? 0) > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    )}
+                  </span>
                 </button>
               ),
             )}
@@ -206,7 +238,23 @@ function ManagerCalendar() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 p-4 sm:p-6">
-          {dayBookings.length === 0 && (
+          {/* Ожидающие заявки на серии в этот день — решение в «Записях» */}
+          {(pendingSeriesDates[selected] ?? []).map((p, i) => (
+            <Link
+              key={`ps-${i}`}
+              to="/manager"
+              className="flex items-center justify-between gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 transition-colors hover:bg-amber-500/20"
+            >
+              <div className="text-sm">
+                <p className="font-medium">Заявка на серию · {p.venue}</p>
+                <p className="text-xs text-muted-foreground">
+                  {p.time} · ждёт решения — подтвердить или отклонить можно в «Записях»
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-amber-600">Решить →</span>
+            </Link>
+          ))}
+          {dayBookings.length === 0 && (pendingSeriesDates[selected]?.length ?? 0) === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">На этот день броней нет.</p>
           )}
           {dayBookings.map((b) => (

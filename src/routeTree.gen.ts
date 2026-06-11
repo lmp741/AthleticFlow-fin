@@ -32,6 +32,7 @@ import { Route as UUsernameRouteImport } from './routes/u.$username'
 import { Route as StadiumsStadiumIdRouteImport } from './routes/stadiums_.$stadiumId'
 import { Route as ManagerScheduleRouteImport } from './routes/manager.schedule'
 import { Route as ManagerPricesRouteImport } from './routes/manager.prices'
+import { Route as ManagerFinanceRouteImport } from './routes/manager.finance'
 import { Route as ManagerChatsRouteImport } from './routes/manager.chats'
 import { Route as ManagerCalendarRouteImport } from './routes/manager.calendar'
 import { Route as GamesGameIdRouteImport } from './routes/games_.$gameId'
@@ -157,6 +158,11 @@ const ManagerPricesRoute = ManagerPricesRouteImport.update({
   path: '/prices',
   getParentRoute: () => ManagerRoute,
 } as any)
+const ManagerFinanceRoute = ManagerFinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
+  getParentRoute: () => ManagerRoute,
+} as any)
 const ManagerChatsRoute = ManagerChatsRouteImport.update({
   id: '/chats',
   path: '/chats',
@@ -269,6 +275,7 @@ export interface FileRoutesByFullPath {
   '/games/$gameId': typeof GamesGameIdRoute
   '/manager/calendar': typeof ManagerCalendarRoute
   '/manager/chats': typeof ManagerChatsRoute
+  '/manager/finance': typeof ManagerFinanceRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
@@ -299,6 +306,7 @@ export interface FileRoutesByTo {
   '/games/$gameId': typeof GamesGameIdRoute
   '/manager/calendar': typeof ManagerCalendarRoute
   '/manager/chats': typeof ManagerChatsRoute
+  '/manager/finance': typeof ManagerFinanceRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
@@ -332,6 +340,7 @@ export interface FileRoutesById {
   '/games_/$gameId': typeof GamesGameIdRoute
   '/manager/calendar': typeof ManagerCalendarRoute
   '/manager/chats': typeof ManagerChatsRoute
+  '/manager/finance': typeof ManagerFinanceRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
   '/stadiums_/$stadiumId': typeof StadiumsStadiumIdRoute
@@ -366,6 +375,7 @@ export interface FileRouteTypes {
     | '/games/$gameId'
     | '/manager/calendar'
     | '/manager/chats'
+    | '/manager/finance'
     | '/manager/prices'
     | '/manager/schedule'
     | '/stadiums/$stadiumId'
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/games/$gameId'
     | '/manager/calendar'
     | '/manager/chats'
+    | '/manager/finance'
     | '/manager/prices'
     | '/manager/schedule'
     | '/stadiums/$stadiumId'
@@ -428,6 +439,7 @@ export interface FileRouteTypes {
     | '/games_/$gameId'
     | '/manager/calendar'
     | '/manager/chats'
+    | '/manager/finance'
     | '/manager/prices'
     | '/manager/schedule'
     | '/stadiums_/$stadiumId'
@@ -682,6 +694,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManagerPricesRouteImport
       parentRoute: typeof ManagerRoute
     }
+    '/manager/finance': {
+      id: '/manager/finance'
+      path: '/finance'
+      fullPath: '/manager/finance'
+      preLoaderRoute: typeof ManagerFinanceRouteImport
+      parentRoute: typeof ManagerRoute
+    }
     '/manager/chats': {
       id: '/manager/chats'
       path: '/chats'
@@ -829,6 +848,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface ManagerRouteChildren {
   ManagerCalendarRoute: typeof ManagerCalendarRoute
   ManagerChatsRoute: typeof ManagerChatsRoute
+  ManagerFinanceRoute: typeof ManagerFinanceRoute
   ManagerPricesRoute: typeof ManagerPricesRoute
   ManagerScheduleRoute: typeof ManagerScheduleRoute
   ManagerIndexRoute: typeof ManagerIndexRoute
@@ -837,6 +857,7 @@ interface ManagerRouteChildren {
 const ManagerRouteChildren: ManagerRouteChildren = {
   ManagerCalendarRoute: ManagerCalendarRoute,
   ManagerChatsRoute: ManagerChatsRoute,
+  ManagerFinanceRoute: ManagerFinanceRoute,
   ManagerPricesRoute: ManagerPricesRoute,
   ManagerScheduleRoute: ManagerScheduleRoute,
   ManagerIndexRoute: ManagerIndexRoute,

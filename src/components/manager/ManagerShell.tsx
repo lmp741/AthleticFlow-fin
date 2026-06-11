@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ClipboardList, CalendarDays, Clock, Tag, Menu, MessageCircle } from "lucide-react";
+import { ClipboardList, CalendarDays, Clock, Tag, Menu, MessageCircle, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -17,6 +17,7 @@ const nav = [
   { to: "/manager/calendar", label: "Календарь", icon: CalendarDays },
   { to: "/manager/schedule", label: "График работы", icon: Clock },
   { to: "/manager/prices", label: "Цены", icon: Tag },
+  { to: "/manager/finance", label: "Финансы", icon: Banknote },
   { to: "/manager/chats", label: "Чаты", icon: MessageCircle },
 ] as const;
 
