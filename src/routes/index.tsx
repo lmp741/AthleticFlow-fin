@@ -95,6 +95,9 @@ function resolveSport(input: string): string | null {
 function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Быстрый поиск свободной площадки (#31) — уводит на /stadiums с фильтром.
+  const [slotDate, setSlotDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [slotTime, setSlotTime] = useState("19:00");
   const [q, setQ] = useState("");
   const [city, setCity] = useState("");
 
@@ -197,6 +200,53 @@ function HomePage() {
                   <c.icon className="h-3.5 w-3.5" /> {c.label}
                 </Link>
               ))}
+            </div>
+
+            {/* Свободные площадки: дата + время → /stadiums с фильтром (#31) */}
+            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-white/20 bg-white/10 p-2 backdrop-blur-xl">
+              <span className="px-2 text-xs font-medium text-white/90">
+                Свободная площадка:
+              </span>
+              <input
+                type="date"
+                value={slotDate}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setSlotDate(e.target.value)}
+                className="h-9 rounded-xl border-0 bg-white px-3 text-sm text-foreground outline-none"
+              />
+              <select
+                value={slotTime}
+                onChange={(e) => setSlotTime(e.target.value)}
+                className="h-9 rounded-xl border-0 bg-white px-3 text-sm text-foreground outline-none"
+              >
+                <option value="any">Любое время</option>
+                {Array.from({ length: 30 }, (_, i) => {
+                  const h = Math.floor(i / 2) + 8;
+                  const m = i % 2 === 0 ? "00" : "30";
+                  const t = `${String(h).padStart(2, "0")}:${m}`;
+                  return (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  );
+                })}
+              </select>
+              <Button
+                size="sm"
+                className="h-9 bg-gradient-brand px-4 text-primary-foreground hover:opacity-90"
+                onClick={() =>
+                  navigate({
+                    to: "/stadiums",
+                    search: {
+                      date: slotDate,
+                      time: slotTime === "any" ? undefined : slotTime,
+                      dur: 90,
+                    },
+                  })
+                }
+              >
+                Показать
+              </Button>
             </div>
 
             {/* PRIMARY CTAS */}

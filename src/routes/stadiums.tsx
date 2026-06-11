@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,6 +56,23 @@ const ALL_SPORTS = [
 ];
 
 export const Route = createFileRoute("/stadiums")({
+  // Быстрый поиск с главной: /stadiums?date=2026-06-12&time=19:00&dur=90
+  validateSearch: (search: Record<string, unknown>) => ({
+    date:
+      typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date)
+        ? search.date
+        : undefined,
+    time:
+      typeof search.time === "string" && /^\d{2}:\d{2}$/.test(search.time)
+        ? search.time
+        : undefined,
+    dur:
+      typeof search.dur === "number"
+        ? search.dur
+        : typeof search.dur === "string" && /^\d+$/.test(search.dur)
+          ? Number(search.dur)
+          : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Стадионы — Athletic Flow" },
@@ -70,22 +94,64 @@ interface Stadium {
   sports: string[];
   price_per_hour: number;
   rating: number | null;
+  is_partner: boolean;
 }
 
+/** Времена для фильтра доступности: 08:00–22:30 шагом 30 мин (= сетка get_free_slots). */
+const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
+  const h = Math.floor(i / 2) + 8;
+  const m = i % 2 === 0 ? "00" : "30";
+  return `${String(h).padStart(2, "0")}:${m}`;
+});
+
 function StadiumsPage() {
+  const searchParams = Route.useSearch();
   const [list, setList] = useState<Stadium[] | null>(null);
   const [query, setQuery] = useState("");
   const [sport, setSport] = useState<string | null>(null);
+  // Фильтр доступности (#31): дата обязательна для активации, время опционально.
+  const [availDate, setAvailDate] = useState(searchParams.date ?? "");
+  const [availTime, setAvailTime] = useState(searchParams.time ?? "any");
+  const [availDur, setAvailDur] = useState(searchParams.dur ?? 90);
+  // null = фильтр неактивен; Set = id партнёрских стадионов со свободным временем.
+  const [availIds, setAvailIds] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     (async () => {
       const { data } = await supabase
         .from("stadiums")
-        .select("id, name, address, cover_gradient, sports, price_per_hour, rating")
+        .select("id, name, address, cover_gradient, sports, price_per_hour, rating, is_partner")
         .order("rating", { ascending: false });
       setList((data ?? []) as Stadium[]);
     })();
   }, []);
+
+  // Запрос доступности при изменении фильтра.
+  useEffect(() => {
+    if (!availDate) {
+      setAvailIds(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase.rpc("find_available_stadiums", {
+        p_date: availDate,
+        p_start: availTime === "any" ? null : availTime,
+        p_duration_min: availDur,
+      });
+      if (!alive) return;
+      if (error) {
+        setAvailIds(new Set());
+        return;
+      }
+      setAvailIds(
+        new Set(((data ?? []) as { stadium_id: string }[]).map((r) => r.stadium_id)),
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [availDate, availTime, availDur]);
 
   const [sportPickerOpen, setSportPickerOpen] = useState(false);
 
@@ -111,9 +177,12 @@ function StadiumsPage() {
     return list.filter((s) => {
       const matchQ = !q || s.name.toLowerCase().includes(q) || s.address.toLowerCase().includes(q);
       const matchS = !sport || s.sports.includes(sport);
-      return matchQ && matchS;
+      // Фильтр доступности применим только к партнёрским (у остальных нет
+      // онлайн-брони и расписания) — при активном фильтре их скрываем.
+      const matchAvail = availIds === null || (s.is_partner && availIds.has(s.id));
+      return matchQ && matchS && matchAvail;
     });
-  }, [list, query, sport]);
+  }, [list, query, sport, availIds]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -141,6 +210,59 @@ function StadiumsPage() {
               placeholder="Поиск по названию или адресу"
               className="h-11 pl-10"
             />
+          </div>
+
+          {/* #31: фильтр по свободному времени (партнёрские стадионы) */}
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Дата</p>
+              <Input
+                type="date"
+                value={availDate}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setAvailDate(e.target.value)}
+                className="h-10 w-40"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Время</p>
+              <Select value={availTime} onValueChange={setAvailTime}>
+                <SelectTrigger className="h-10 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  <SelectItem value="any">Любое</SelectItem>
+                  {TIME_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Длительность</p>
+              <Select value={String(availDur)} onValueChange={(v) => setAvailDur(Number(v))}>
+                <SelectTrigger className="h-10 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="60">1 час</SelectItem>
+                  <SelectItem value="90">1,5 часа</SelectItem>
+                  <SelectItem value="120">2 часа</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {availDate && (
+              <Button variant="ghost" size="sm" className="h-10" onClick={() => setAvailDate("")}>
+                Сбросить
+              </Button>
+            )}
+            {availIds !== null && (
+              <p className="w-full text-xs text-muted-foreground sm:w-auto sm:self-center">
+                Показаны стадионы со свободным временем (онлайн-бронь).
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
