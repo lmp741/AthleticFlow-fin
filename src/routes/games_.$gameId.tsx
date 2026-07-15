@@ -446,7 +446,6 @@ function GamePage() {
         : taken === 0
           ? { label: "Новая игра", cls: "bg-emerald-500/20 text-emerald-50 border-emerald-300/40" }
           : { label: "Идёт набор", cls: "bg-white/15 text-white border-white/30" };
-  const [payOpen, setPayOpen] = useState(false);
   const [paying, setPaying] = useState(false);
   const [makePublicOpen, setMakePublicOpen] = useState(false);
   const [makingPublic, setMakingPublic] = useState(false);
@@ -467,20 +466,57 @@ function GamePage() {
     }
   };
 
-  const payForMe = async () => {
-    if (!myEntry) return;
+  // Реальная оплата через PayKeeper: просим сервер создать платёж и получить
+  // ссылку на платёжную форму, затем редиректим туда. Галку `paid` поставит
+  // webhook /api/paykeeper/callback после подтверждения от PayKeeper.
+  const startPayment = async () => {
+    if (!game || !user) return;
     setPaying(true);
-    await new Promise((r) => setTimeout(r, 900));
-    const { error } = await supabase
-      .from("game_participants")
-      .update({ paid: true })
-      .eq("id", myEntry.id);
-    setPaying(false);
-    setPayOpen(false);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Оплата прошла успешно ✓");
-      loadParticipants();
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        toast.error("Сессия истекла — войдите заново");
+        setPaying(false);
+        return;
+      }
+      const res = await fetch("/api/paykeeper/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ game_id: game.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        alreadyPaid?: boolean;
+        error?: string;
+      };
+      if (!res.ok) {
+        toast.error(
+          data.error === "not a participant"
+            ? "Сначала запишитесь в игру"
+            : data.error === "game finished"
+              ? "Игра уже завершена"
+              : "Не удалось начать оплату",
+        );
+        setPaying(false);
+        return;
+      }
+      if (data.alreadyPaid) {
+        toast.success("Участие уже оплачено");
+        loadParticipants();
+        setPaying(false);
+        return;
+      }
+      if (data.url) {
+        // Уходим на форму PayKeeper — состояние спиннера не сбрасываем.
+        window.location.assign(data.url);
+        return;
+      }
+      toast.error("Не удалось начать оплату");
+      setPaying(false);
+    } catch {
+      toast.error("Ошибка сети, попробуйте ещё раз");
+      setPaying(false);
     }
   };
 
@@ -817,7 +853,9 @@ function GamePage() {
                 {participants.map((p) => {
                   const mine = p.user_id === user?.id;
                   const isAdmin = p.user_id === game.organizer_id;
-                  const canTogglePaid = mine || isOrganizer;
+                  // Оплатить может только сам игрок и только за себя, через PayKeeper.
+                  // Ручную отметку "оплачено" убрали — галку ставит webhook после реальной оплаты.
+                  const canPaySelf = mine && !p.paid && !isArchived;
                   const gameOver = new Date(game.ends_at).getTime() < Date.now();
                   // Оценивать может ТОЛЬКО организатор и только ПОСЛЕ окончания игры.
                   // (В будущей фиче «капитаны» — дополним вторым правом.)
@@ -901,24 +939,14 @@ function GamePage() {
                             rateeName={p.profile?.display_name ?? p.profile?.username ?? "игрока"}
                           />
                         )}
-                        {canTogglePaid && (
+                        {canPaySelf && (
                           <Button
                             size="sm"
-                            variant={p.paid ? "outline" : "default"}
-                            className={p.paid ? "" : "bg-gradient-brand text-primary-foreground hover:opacity-90"}
-                            onClick={async () => {
-                              const { error } = await supabase
-                                .from("game_participants")
-                                .update({ paid: !p.paid })
-                                .eq("id", p.id);
-                              if (error) toast.error(error.message);
-                              else {
-                                toast.success(p.paid ? "Оплата снята" : isOrganizer && !mine ? "Доплачено за участника" : "Оплачено");
-                                loadParticipants();
-                              }
-                            }}
+                            disabled={paying}
+                            className="bg-gradient-brand text-primary-foreground hover:opacity-90"
+                            onClick={startPayment}
                           >
-                            {p.paid ? "Снять отметку" : isOrganizer && !mine ? "Доплатить" : "Оплатить"}
+                            {paying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Оплатить"}
                           </Button>
                         )}
                       </div>
@@ -1047,11 +1075,16 @@ function GamePage() {
                     </div>
                   ) : (
                     <Button
-                      onClick={() => setPayOpen(true)}
+                      onClick={startPayment}
+                      disabled={paying}
                       size="lg"
                       className="w-full bg-gradient-brand text-primary-foreground hover:opacity-90"
                     >
-                      <CreditCard className="h-4 w-4" /> Оплатить {game.price_per_player} ₽
+                      {paying ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Переход к оплате…</>
+                      ) : (
+                        <><CreditCard className="h-4 w-4" /> Оплатить {game.price_per_player} ₽</>
+                      )}
                     </Button>
                   )}
                   <Button onClick={leave} disabled={joining} variant="outline" size="sm" className="w-full">
@@ -1125,11 +1158,12 @@ function GamePage() {
               </Button>
             ) : (
               <Button
-                onClick={() => setPayOpen(true)}
+                onClick={startPayment}
+                disabled={paying}
                 size="lg"
                 className="bg-gradient-brand text-primary-foreground hover:opacity-90"
               >
-                <CreditCard className="h-4 w-4" /> Оплатить
+                {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Оплатить
               </Button>
             )
           ) : isOrganizer ? (
@@ -1184,58 +1218,6 @@ function GamePage() {
             >
               {makingPublic ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
               Сделать общедоступной
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent className="!top-4 !translate-y-0 sm:!top-1/2 sm:!-translate-y-1/2 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Оплата участия</DialogTitle>
-            <DialogDescription>
-              {game.stadium?.name} · {fmtDate(game.starts_at)} · {fmtTime(game.starts_at)}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex items-baseline justify-between rounded-2xl border border-border bg-muted/40 px-4 py-3">
-              <span className="text-sm text-muted-foreground">К оплате</span>
-              <span className="font-display text-2xl font-bold">{game.price_per_player} ₽</span>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="card">Номер карты</Label>
-              <Input id="card" placeholder="4242 4242 4242 4242" defaultValue="4242 4242 4242 4242" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="exp">Срок</Label>
-                <Input id="exp" placeholder="12/28" defaultValue="12/28" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cvc">CVC</Label>
-                <Input id="cvc" placeholder="123" defaultValue="123" />
-              </div>
-            </div>
-            <p className="text-center text-xs text-muted-foreground">
-              Это демо-оплата. Реальное списание не произойдёт.
-            </p>
-            {/* Дисклеймер про fair play — не «правила», а человеческая просьба
-                держаться в рамках. Полное саморегулирование сообщества. */}
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-              <p className="mb-1 font-semibold text-foreground">Один момент</p>
-              На поле просим вести себя уважительно: без мата, без агрессии, без оскорблений в адрес соперников и организатора. Athletic Flow — про спорт и хорошее настроение, а не конфликты. Спасибо.
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>
-              Отмена
-            </Button>
-            <Button
-              onClick={payForMe}
-              disabled={paying}
-              className="bg-gradient-brand text-primary-foreground hover:opacity-90"
-            >
-              {paying ? <><Loader2 className="h-4 w-4 animate-spin" /> Обработка…</> : <><CreditCard className="h-4 w-4" /> Оплатить</>}
             </Button>
           </DialogFooter>
         </DialogContent>

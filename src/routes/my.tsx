@@ -52,6 +52,9 @@ function MyPage() {
         .from("games")
         .select("id, sport, level, starts_at, ends_at, price_per_player, slots_total, status, stadium:stadiums(name,address,manager_id)")
         .eq("organizer_id", user.id)
+        // Архивные (финализированные и автозакрытые) — в истории профиля,
+        // здесь только живые игры.
+        .is("archived_at", null)
         .order("starts_at", { ascending: true }),
       supabase
         .from("game_participants")
@@ -66,6 +69,7 @@ function MyPage() {
         .from("games")
         .select("id, sport, level, starts_at, ends_at, price_per_player, slots_total, status, stadium:stadiums(name,address)")
         .in("id", joinedIds)
+        .is("archived_at", null)
         .order("starts_at", { ascending: true });
       joinedGames = data ?? [];
     }
