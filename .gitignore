@@ -17,6 +17,10 @@ dist-ssr
 .nitro
 *.local
 
+# Секреты — НЕ коммитим. На сервере лежат в /var/www/af-sport/env.prod
+.env
+!.env.example
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

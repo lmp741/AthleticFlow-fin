@@ -306,10 +306,16 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-border/60">
-        <div className="container mx-auto flex flex-col gap-2 px-4 py-4 text-xs text-muted-foreground sm:px-6 md:flex-row md:items-center md:justify-between">
+        <div className="container mx-auto flex flex-col gap-3 px-4 py-4 text-xs text-muted-foreground sm:px-6 md:flex-row md:items-center md:justify-between">
           <p>
             © {new Date().getFullYear()} ООО «АТЛЕТИК ФЛОУ». Все права защищены.
           </p>
+          <img
+            src="/HorizontalLogos.svg"
+            alt="Visa, MasterCard, МИР, PayKeeper"
+            className="h-6 w-auto shrink-0 md:order-last"
+            loading="lazy"
+          />
           <p className="text-[11px] leading-relaxed">
             ИНН 5024259241 · КПП 502401001 ·
             143442, Московская обл., Красногорский р-н, д. Отрадное, ул. Пятницкая, д. 14, кв. 443
