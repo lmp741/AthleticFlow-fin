@@ -51,7 +51,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Платформа любительского спорта: футбол, баскетбол, волейбол и ещё 15+ видов. Найди игру рядом, собери команду и присоединись в 3 клика.",
+          "Платформа любительского спорта в Москве: футбол, мини-футбол, волейбол и теннис. Найди игру рядом, собери команду и присоединись в 3 клика.",
       },
       { property: "og:title", content: "Athletic Flow — спорт без поиска соперников" },
       {
@@ -138,7 +138,7 @@ function HomePage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
               </span>
-              Сейчас идут игры в 12 районах
+              Новая платформа для спорта в Москве
             </div>
 
             <h1 className="font-display text-4xl font-bold leading-[1.06] tracking-tight text-white sm:text-5xl lg:text-6xl">
@@ -147,7 +147,7 @@ function HomePage() {
               Выходи на поле.
             </h1>
             <p className="mt-4 max-w-xl text-sm text-white/80 sm:text-base">
-              Любительский спорт рядом с домом. Футбол, баскетбол, волейбол и ещё 15+ видов —
+              Любительский спорт рядом с домом. Футбол, мини-футбол, волейбол и теннис —
               присоединяйся к игре или собирай свою за 3 клика.
             </p>
 
@@ -280,12 +280,12 @@ function HomePage() {
               </Button>
             </div>
 
-            {/* TRUST METRICS */}
+            {/* Реальные преимущества продукта (без выдуманных метрик) */}
             <div className="mt-10 grid max-w-lg grid-cols-3 gap-4 text-white">
               {[
-                { v: "120+", l: "площадок" },
+                { v: "Онлайн", l: "оплата и чек" },
+                { v: "Драфт", l: "делим на команды" },
                 { v: "3 клика", l: "до игры" },
-                { v: "4.9★", l: "рейтинг" },
               ].map((s) => (
                 <div key={s.l} className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 backdrop-blur-sm">
                   <p className="font-display text-2xl font-bold md:text-3xl">{s.v}</p>
