@@ -363,14 +363,14 @@ function HomePage() {
         <UpcomingGamesList />
       </section>
 
-      {/* SOCIAL PROOF */}
+      {/* Ключевые возможности (честно, без выдуманных счётчиков) */}
       <section className="container mx-auto px-4 pb-16 sm:px-6 md:pb-20">
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           {[
-            { v: "12 800+", l: "матчей сыграно", icon: Trophy },
-            { v: "5 400+", l: "активных игроков", icon: Users },
-            { v: "320+", l: "проверенных организаторов", icon: ShieldCheck },
-            { v: "4.9 / 5", l: "средний рейтинг", icon: Star },
+            { v: "Состав", l: "Поможем добрать игроков", icon: Users },
+            { v: "Площадки", l: "Партнёр — СК «Луч»", icon: ShieldCheck },
+            { v: "Драфт", l: "Капитаны делят команды", icon: Trophy },
+            { v: "Рейтинги", l: "Отзывы после матчей", icon: Star },
           ].map((s) => (
             <div
               key={s.l}

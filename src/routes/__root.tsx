@@ -72,6 +72,10 @@ export const Route = createRootRoute({
       // Превью — локальная картинка (положить файл в public/og-image.png).
       // Раньше лежала на r2.dev (Cloudflare) — убрано для 152-ФЗ.
       { property: "og:image", content: "https://af-sport.ru/og-image.png" },
+      { property: "og:image:width", content: "1731" },
+      { property: "og:image:height", content: "909" },
+      { property: "og:image:type", content: "image/png" },
+      { property: "og:image:alt", content: "Athletic Flow — платформа для любительского спорта" },
       { name: "twitter:image", content: "https://af-sport.ru/og-image.png" },
       // Геолокация и язык — для Яндекса и СНГ
       { httpEquiv: "Content-Language", content: "ru-RU" },
