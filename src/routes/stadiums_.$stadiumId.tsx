@@ -130,6 +130,7 @@ interface StadiumRow {
   sports: string[];
   price_per_hour: number;
   rating: number | null;
+  rating_count: number | null; // число оценок (напр. с Яндекс.Карт) — для честной schema
   lat: number | null;
   lng: number | null;
   // Партнёрские поля (могут быть null для не-партнёрских стадионов)
@@ -213,8 +214,13 @@ function VenueCard({ venue, stadiumId }: { venue: VenueRow; stadiumId: string })
           <img
             src={venue.cover_url}
             alt={venue.name}
-            loading="lazy"
             className="h-full w-full object-cover transition group-hover:scale-105"
+            onError={(e) => {
+              // Если загруженное фото недоступно — не показываем «битую» картинку,
+              // подставляем нейтральный бандл-ассет.
+              const img = e.currentTarget;
+              if (img.src !== turfImg) img.src = turfImg;
+            }}
           />
         </div>
       )}
@@ -295,7 +301,7 @@ function StadiumPage() {
         supabase
           .from("stadiums")
           .select(
-            "id, name, address, sports, price_per_hour, rating, lat, lng, description, cover_url, phone, email, website, is_partner",
+            "id, name, address, sports, price_per_hour, rating, rating_count, lat, lng, description, cover_url, phone, email, website, is_partner",
           )
           .eq("id", stadiumId)
           .maybeSingle(),
@@ -376,12 +382,14 @@ function StadiumPage() {
     if (stadium.lat != null && stadium.lng != null) {
       blob.geo = { "@type": "GeoCoordinates", latitude: stadium.lat, longitude: stadium.lng };
     }
-    if (stadium.rating != null) {
+    // aggregateRating показываем ТОЛЬКО при реальном числе оценок (напр. с Яндекс.Карт).
+    // Иначе — не выдумываем отзывы (за фейковую разметку поисковики наказывают).
+    if (stadium.rating != null && stadium.rating_count != null && stadium.rating_count > 0) {
       blob.aggregateRating = {
         "@type": "AggregateRating",
         ratingValue: stadium.rating,
         bestRating: 5,
-        ratingCount: 1,
+        ratingCount: stadium.rating_count,
       };
     }
     return blob;
