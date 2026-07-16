@@ -62,19 +62,12 @@ export const Route = createFileRoute("/stadiums_/$stadiumId")({
     try {
       const { data } = await supabase
         .from("stadiums")
-        .select("name, address, sports, price_per_hour, description, cover_url")
+        .select(
+          "id, name, address, sports, price_per_hour, rating, rating_count, lat, lng, description, cover_url, phone, email, website, is_partner",
+        )
         .eq("id", params.stadiumId)
         .maybeSingle();
-      return {
-        stadium: (data ?? null) as {
-          name: string;
-          address: string | null;
-          sports: string[] | null;
-          price_per_hour: number | null;
-          description: string | null;
-          cover_url: string | null;
-        } | null,
-      };
+      return { stadium: (data ?? null) as StadiumRow | null };
     } catch {
       return { stadium: null };
     }
@@ -282,7 +275,10 @@ function VenueCard({ venue, stadiumId }: { venue: VenueRow; stadiumId: string })
 
 function StadiumPage() {
   const { stadiumId } = Route.useParams();
-  const [stadium, setStadium] = useState<StadiumRow | null>(null);
+  // Стадион, загруженный на сервере (loader) — начальное значение, чтобы контент и
+  // JSON-LD (schema.org) рендерились в SSR и попадали в исходник для поисковиков.
+  const { stadium: ssrStadium } = Route.useLoaderData();
+  const [stadium, setStadium] = useState<StadiumRow | null>(ssrStadium ?? null);
   const [games, setGames] = useState<GameRow[] | null>(null);
   // Партнёрские стадионы (is_partner=true) подгружают список площадок
   // с вариантами аренды и ценами. Для остальных — пусто.
