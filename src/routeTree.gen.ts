@@ -12,7 +12,6 @@ import { createServerRootRoute } from '@tanstack/react-start/server'
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StadiumsRouteImport } from './routes/stadiums'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ResetPhoneRouteImport } from './routes/reset-phone'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -30,6 +29,8 @@ import { Route as ManagerIndexRouteImport } from './routes/manager.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as UUsernameRouteImport } from './routes/u.$username'
 import { Route as StadiumsStadiumIdRouteImport } from './routes/stadiums_.$stadiumId'
+import { Route as PaySuccessRouteImport } from './routes/pay.success'
+import { Route as PayFailRouteImport } from './routes/pay.fail'
 import { Route as ManagerScheduleRouteImport } from './routes/manager.schedule'
 import { Route as ManagerPricesRouteImport } from './routes/manager.prices'
 import { Route as ManagerFinanceRouteImport } from './routes/manager.finance'
@@ -42,12 +43,16 @@ import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminLogRouteImport } from './routes/admin.log'
 import { Route as AdminGoalsRouteImport } from './routes/admin.goals'
 import { Route as AdminGamesRouteImport } from './routes/admin.games'
+import { ServerRoute as SitemapDotxmlServerRouteImport } from './routes/sitemap[.]xml'
 import { ServerRoute as ApiUploadServerRouteImport } from './routes/api/upload'
 import { ServerRoute as ApiPitchesServerRouteImport } from './routes/api/pitches'
 import { ServerRoute as ApiMediaSignServerRouteImport } from './routes/api/media-sign'
 import { ServerRoute as ApiMediaServerRouteImport } from './routes/api/media'
 import { ServerRoute as ApiGeocodeSuggestServerRouteImport } from './routes/api/geocode-suggest'
 import { ServerRoute as ApiGeocodeServerRouteImport } from './routes/api/geocode'
+import { ServerRoute as ApiTelegramAuthServerRouteImport } from './routes/api/telegram/auth'
+import { ServerRoute as ApiPaykeeperCreateServerRouteImport } from './routes/api/paykeeper/create'
+import { ServerRoute as ApiPaykeeperCallbackServerRouteImport } from './routes/api/paykeeper/callback'
 import { ServerRoute as ApiInternalSendPushServerRouteImport } from './routes/api/internal.send-push'
 import { ServerRoute as ApiAdminGrantRoleServerRouteImport } from './routes/api/admin/grant-role'
 
@@ -56,11 +61,6 @@ const rootServerRouteImport = createServerRootRoute()
 const StadiumsRoute = StadiumsRouteImport.update({
   id: '/stadiums',
   path: '/stadiums',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPhoneRoute = ResetPhoneRouteImport.update({
@@ -148,6 +148,16 @@ const StadiumsStadiumIdRoute = StadiumsStadiumIdRouteImport.update({
   path: '/stadiums/$stadiumId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaySuccessRoute = PaySuccessRouteImport.update({
+  id: '/pay/success',
+  path: '/pay/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PayFailRoute = PayFailRouteImport.update({
+  id: '/pay/fail',
+  path: '/pay/fail',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ManagerScheduleRoute = ManagerScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
@@ -208,6 +218,11 @@ const AdminGamesRoute = AdminGamesRouteImport.update({
   path: '/games',
   getParentRoute: () => AdminRoute,
 } as any)
+const SitemapDotxmlServerRoute = SitemapDotxmlServerRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
 const ApiUploadServerRoute = ApiUploadServerRouteImport.update({
   id: '/api/upload',
   path: '/api/upload',
@@ -238,6 +253,23 @@ const ApiGeocodeServerRoute = ApiGeocodeServerRouteImport.update({
   path: '/api/geocode',
   getParentRoute: () => rootServerRouteImport,
 } as any)
+const ApiTelegramAuthServerRoute = ApiTelegramAuthServerRouteImport.update({
+  id: '/api/telegram/auth',
+  path: '/api/telegram/auth',
+  getParentRoute: () => rootServerRouteImport,
+} as any)
+const ApiPaykeeperCreateServerRoute =
+  ApiPaykeeperCreateServerRouteImport.update({
+    id: '/api/paykeeper/create',
+    path: '/api/paykeeper/create',
+    getParentRoute: () => rootServerRouteImport,
+  } as any)
+const ApiPaykeeperCallbackServerRoute =
+  ApiPaykeeperCallbackServerRouteImport.update({
+    id: '/api/paykeeper/callback',
+    path: '/api/paykeeper/callback',
+    getParentRoute: () => rootServerRouteImport,
+  } as any)
 const ApiInternalSendPushServerRoute =
   ApiInternalSendPushServerRouteImport.update({
     id: '/api/internal/send-push',
@@ -264,7 +296,6 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/reset-phone': typeof ResetPhoneRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stadiums': typeof StadiumsRoute
   '/admin/games': typeof AdminGamesRoute
   '/admin/goals': typeof AdminGoalsRoute
@@ -278,6 +309,8 @@ export interface FileRoutesByFullPath {
   '/manager/finance': typeof ManagerFinanceRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
+  '/pay/fail': typeof PayFailRoute
+  '/pay/success': typeof PaySuccessRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
   '/u/$username': typeof UUsernameRoute
   '/admin/': typeof AdminIndexRoute
@@ -295,7 +328,6 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/reset-phone': typeof ResetPhoneRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stadiums': typeof StadiumsRoute
   '/admin/games': typeof AdminGamesRoute
   '/admin/goals': typeof AdminGoalsRoute
@@ -309,6 +341,8 @@ export interface FileRoutesByTo {
   '/manager/finance': typeof ManagerFinanceRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
+  '/pay/fail': typeof PayFailRoute
+  '/pay/success': typeof PaySuccessRoute
   '/stadiums/$stadiumId': typeof StadiumsStadiumIdRoute
   '/u/$username': typeof UUsernameRoute
   '/admin': typeof AdminIndexRoute
@@ -329,7 +363,6 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/reset-phone': typeof ResetPhoneRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stadiums': typeof StadiumsRoute
   '/admin/games': typeof AdminGamesRoute
   '/admin/goals': typeof AdminGoalsRoute
@@ -343,6 +376,8 @@ export interface FileRoutesById {
   '/manager/finance': typeof ManagerFinanceRoute
   '/manager/prices': typeof ManagerPricesRoute
   '/manager/schedule': typeof ManagerScheduleRoute
+  '/pay/fail': typeof PayFailRoute
+  '/pay/success': typeof PaySuccessRoute
   '/stadiums_/$stadiumId': typeof StadiumsStadiumIdRoute
   '/u/$username': typeof UUsernameRoute
   '/admin/': typeof AdminIndexRoute
@@ -364,7 +399,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/profile'
     | '/reset-phone'
-    | '/sitemap.xml'
     | '/stadiums'
     | '/admin/games'
     | '/admin/goals'
@@ -378,6 +412,8 @@ export interface FileRouteTypes {
     | '/manager/finance'
     | '/manager/prices'
     | '/manager/schedule'
+    | '/pay/fail'
+    | '/pay/success'
     | '/stadiums/$stadiumId'
     | '/u/$username'
     | '/admin/'
@@ -395,7 +431,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/profile'
     | '/reset-phone'
-    | '/sitemap.xml'
     | '/stadiums'
     | '/admin/games'
     | '/admin/goals'
@@ -409,6 +444,8 @@ export interface FileRouteTypes {
     | '/manager/finance'
     | '/manager/prices'
     | '/manager/schedule'
+    | '/pay/fail'
+    | '/pay/success'
     | '/stadiums/$stadiumId'
     | '/u/$username'
     | '/admin'
@@ -428,7 +465,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/profile'
     | '/reset-phone'
-    | '/sitemap.xml'
     | '/stadiums'
     | '/admin/games'
     | '/admin/goals'
@@ -442,6 +478,8 @@ export interface FileRouteTypes {
     | '/manager/finance'
     | '/manager/prices'
     | '/manager/schedule'
+    | '/pay/fail'
+    | '/pay/success'
     | '/stadiums_/$stadiumId'
     | '/u/$username'
     | '/admin/'
@@ -462,15 +500,17 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ProfileRoute: typeof ProfileRoute
   ResetPhoneRoute: typeof ResetPhoneRoute
-  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StadiumsRoute: typeof StadiumsRoute
   ChatsConversationIdRoute: typeof ChatsConversationIdRoute
   FriendsFriendIdRoute: typeof FriendsFriendIdRoute
   GamesGameIdRoute: typeof GamesGameIdRoute
+  PayFailRoute: typeof PayFailRoute
+  PaySuccessRoute: typeof PaySuccessRoute
   StadiumsStadiumIdRoute: typeof StadiumsStadiumIdRoute
   UUsernameRoute: typeof UUsernameRoute
 }
 export interface FileServerRoutesByFullPath {
+  '/sitemap.xml': typeof SitemapDotxmlServerRoute
   '/api/geocode': typeof ApiGeocodeServerRoute
   '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
   '/api/media': typeof ApiMediaServerRoute
@@ -479,8 +519,12 @@ export interface FileServerRoutesByFullPath {
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
   '/api/internal/send-push': typeof ApiInternalSendPushServerRoute
+  '/api/paykeeper/callback': typeof ApiPaykeeperCallbackServerRoute
+  '/api/paykeeper/create': typeof ApiPaykeeperCreateServerRoute
+  '/api/telegram/auth': typeof ApiTelegramAuthServerRoute
 }
 export interface FileServerRoutesByTo {
+  '/sitemap.xml': typeof SitemapDotxmlServerRoute
   '/api/geocode': typeof ApiGeocodeServerRoute
   '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
   '/api/media': typeof ApiMediaServerRoute
@@ -489,9 +533,13 @@ export interface FileServerRoutesByTo {
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
   '/api/internal/send-push': typeof ApiInternalSendPushServerRoute
+  '/api/paykeeper/callback': typeof ApiPaykeeperCallbackServerRoute
+  '/api/paykeeper/create': typeof ApiPaykeeperCreateServerRoute
+  '/api/telegram/auth': typeof ApiTelegramAuthServerRoute
 }
 export interface FileServerRoutesById {
   __root__: typeof rootServerRouteImport
+  '/sitemap.xml': typeof SitemapDotxmlServerRoute
   '/api/geocode': typeof ApiGeocodeServerRoute
   '/api/geocode-suggest': typeof ApiGeocodeSuggestServerRoute
   '/api/media': typeof ApiMediaServerRoute
@@ -500,10 +548,14 @@ export interface FileServerRoutesById {
   '/api/upload': typeof ApiUploadServerRoute
   '/api/admin/grant-role': typeof ApiAdminGrantRoleServerRoute
   '/api/internal/send-push': typeof ApiInternalSendPushServerRoute
+  '/api/paykeeper/callback': typeof ApiPaykeeperCallbackServerRoute
+  '/api/paykeeper/create': typeof ApiPaykeeperCreateServerRoute
+  '/api/telegram/auth': typeof ApiTelegramAuthServerRoute
 }
 export interface FileServerRouteTypes {
   fileServerRoutesByFullPath: FileServerRoutesByFullPath
   fullPaths:
+    | '/sitemap.xml'
     | '/api/geocode'
     | '/api/geocode-suggest'
     | '/api/media'
@@ -512,8 +564,12 @@ export interface FileServerRouteTypes {
     | '/api/upload'
     | '/api/admin/grant-role'
     | '/api/internal/send-push'
+    | '/api/paykeeper/callback'
+    | '/api/paykeeper/create'
+    | '/api/telegram/auth'
   fileServerRoutesByTo: FileServerRoutesByTo
   to:
+    | '/sitemap.xml'
     | '/api/geocode'
     | '/api/geocode-suggest'
     | '/api/media'
@@ -522,8 +578,12 @@ export interface FileServerRouteTypes {
     | '/api/upload'
     | '/api/admin/grant-role'
     | '/api/internal/send-push'
+    | '/api/paykeeper/callback'
+    | '/api/paykeeper/create'
+    | '/api/telegram/auth'
   id:
     | '__root__'
+    | '/sitemap.xml'
     | '/api/geocode'
     | '/api/geocode-suggest'
     | '/api/media'
@@ -532,9 +592,13 @@ export interface FileServerRouteTypes {
     | '/api/upload'
     | '/api/admin/grant-role'
     | '/api/internal/send-push'
+    | '/api/paykeeper/callback'
+    | '/api/paykeeper/create'
+    | '/api/telegram/auth'
   fileServerRoutesById: FileServerRoutesById
 }
 export interface RootServerRouteChildren {
+  SitemapDotxmlServerRoute: typeof SitemapDotxmlServerRoute
   ApiGeocodeServerRoute: typeof ApiGeocodeServerRoute
   ApiGeocodeSuggestServerRoute: typeof ApiGeocodeSuggestServerRoute
   ApiMediaServerRoute: typeof ApiMediaServerRoute
@@ -543,6 +607,9 @@ export interface RootServerRouteChildren {
   ApiUploadServerRoute: typeof ApiUploadServerRoute
   ApiAdminGrantRoleServerRoute: typeof ApiAdminGrantRoleServerRoute
   ApiInternalSendPushServerRoute: typeof ApiInternalSendPushServerRoute
+  ApiPaykeeperCallbackServerRoute: typeof ApiPaykeeperCallbackServerRoute
+  ApiPaykeeperCreateServerRoute: typeof ApiPaykeeperCreateServerRoute
+  ApiTelegramAuthServerRoute: typeof ApiTelegramAuthServerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -552,13 +619,6 @@ declare module '@tanstack/react-router' {
       path: '/stadiums'
       fullPath: '/stadiums'
       preLoaderRoute: typeof StadiumsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-phone': {
@@ -680,6 +740,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StadiumsStadiumIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pay/success': {
+      id: '/pay/success'
+      path: '/pay/success'
+      fullPath: '/pay/success'
+      preLoaderRoute: typeof PaySuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pay/fail': {
+      id: '/pay/fail'
+      path: '/pay/fail'
+      fullPath: '/pay/fail'
+      preLoaderRoute: typeof PayFailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/manager/schedule': {
       id: '/manager/schedule'
       path: '/schedule'
@@ -768,6 +842,13 @@ declare module '@tanstack/react-router' {
 }
 declare module '@tanstack/react-start/server' {
   interface ServerFileRoutesByPath {
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
     '/api/upload': {
       id: '/api/upload'
       path: '/api/upload'
@@ -808,6 +889,27 @@ declare module '@tanstack/react-start/server' {
       path: '/api/geocode'
       fullPath: '/api/geocode'
       preLoaderRoute: typeof ApiGeocodeServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
+    '/api/telegram/auth': {
+      id: '/api/telegram/auth'
+      path: '/api/telegram/auth'
+      fullPath: '/api/telegram/auth'
+      preLoaderRoute: typeof ApiTelegramAuthServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
+    '/api/paykeeper/create': {
+      id: '/api/paykeeper/create'
+      path: '/api/paykeeper/create'
+      fullPath: '/api/paykeeper/create'
+      preLoaderRoute: typeof ApiPaykeeperCreateServerRouteImport
+      parentRoute: typeof rootServerRouteImport
+    }
+    '/api/paykeeper/callback': {
+      id: '/api/paykeeper/callback'
+      path: '/api/paykeeper/callback'
+      fullPath: '/api/paykeeper/callback'
+      preLoaderRoute: typeof ApiPaykeeperCallbackServerRouteImport
       parentRoute: typeof rootServerRouteImport
     }
     '/api/internal/send-push': {
@@ -880,11 +982,12 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ProfileRoute: ProfileRoute,
   ResetPhoneRoute: ResetPhoneRoute,
-  SitemapDotxmlRoute: SitemapDotxmlRoute,
   StadiumsRoute: StadiumsRoute,
   ChatsConversationIdRoute: ChatsConversationIdRoute,
   FriendsFriendIdRoute: FriendsFriendIdRoute,
   GamesGameIdRoute: GamesGameIdRoute,
+  PayFailRoute: PayFailRoute,
+  PaySuccessRoute: PaySuccessRoute,
   StadiumsStadiumIdRoute: StadiumsStadiumIdRoute,
   UUsernameRoute: UUsernameRoute,
 }
@@ -892,6 +995,7 @@ export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 const rootServerRouteChildren: RootServerRouteChildren = {
+  SitemapDotxmlServerRoute: SitemapDotxmlServerRoute,
   ApiGeocodeServerRoute: ApiGeocodeServerRoute,
   ApiGeocodeSuggestServerRoute: ApiGeocodeSuggestServerRoute,
   ApiMediaServerRoute: ApiMediaServerRoute,
@@ -900,6 +1004,9 @@ const rootServerRouteChildren: RootServerRouteChildren = {
   ApiUploadServerRoute: ApiUploadServerRoute,
   ApiAdminGrantRoleServerRoute: ApiAdminGrantRoleServerRoute,
   ApiInternalSendPushServerRoute: ApiInternalSendPushServerRoute,
+  ApiPaykeeperCallbackServerRoute: ApiPaykeeperCallbackServerRoute,
+  ApiPaykeeperCreateServerRoute: ApiPaykeeperCreateServerRoute,
+  ApiTelegramAuthServerRoute: ApiTelegramAuthServerRoute,
 }
 export const serverRouteTree = rootServerRouteImport
   ._addFileChildren(rootServerRouteChildren)

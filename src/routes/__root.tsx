@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/hooks/useAuth";
 import { CallProvider } from "@/components/calls/CallProvider";
+import { TelegramMiniApp } from "@/components/telegram/TelegramMiniApp";
 
 // Declare ym for TypeScript (Яндекс.Метрика)
 declare global {
@@ -97,6 +98,8 @@ export const Route = createRootRoute({
       { rel: "manifest", href: "/manifest.webmanifest" },
     ],
     scripts: [
+      // Telegram Mini App SDK (вендорим локально в public/ ради 152-ФЗ).
+      { src: "/telegram-web-app.js" },
       {
         type: "application/ld+json",
         children: JSON.stringify({
@@ -231,6 +234,7 @@ function RootComponent() {
     <AuthProvider>
       <CallProvider>
         <YmTracker />
+        <TelegramMiniApp />
         <Outlet />
       </CallProvider>
     </AuthProvider>
