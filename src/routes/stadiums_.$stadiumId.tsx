@@ -56,24 +56,64 @@ function buildStadiumDescription(stadium: {
 }
 
 export const Route = createFileRoute("/stadiums_/$stadiumId")({
-  head: ({ params }) => {
+  // SSR-загрузка стадиона: нужна, чтобы head() построил title/description с реальным
+  // названием стадиона (SEO по запросу «стадион <имя> аренда»). Никогда не падаем.
+  loader: async ({ params }) => {
+    try {
+      const { data } = await supabase
+        .from("stadiums")
+        .select("name, address, sports, price_per_hour, description, cover_url")
+        .eq("id", params.stadiumId)
+        .maybeSingle();
+      return {
+        stadium: (data ?? null) as {
+          name: string;
+          address: string | null;
+          sports: string[] | null;
+          price_per_hour: number | null;
+          description: string | null;
+          cover_url: string | null;
+        } | null,
+      };
+    } catch {
+      return { stadium: null };
+    }
+  },
+  head: ({ params, loaderData }) => {
+    const s = loaderData?.stadium ?? null;
     const url = `${BASE_URL}/stadiums/${params.stadiumId}`;
-    const title = "Стадион в Москве — аренда и любительские игры — Athletic Flow";
+    const name = s?.name?.trim();
+    const title = name
+      ? `Стадион «${name}» — аренда поля и любительские игры в Москве`
+      : "Стадион в Москве — аренда и любительские игры — Athletic Flow";
     const description =
-      "Подробное описание стадиона: виды спорта, цена аренды, расписание открытых игр. Записывайся в команду или арендуй площадку для своего матча. Москва.";
+      s && name
+        ? buildStadiumDescription({
+            name,
+            address: s.address ?? "",
+            sports: s.sports ?? [],
+            price_per_hour: s.price_per_hour ?? 0,
+          })
+        : "Подробное описание стадиона: виды спорта, цена аренды, расписание открытых игр. Записывайся в команду или арендуй площадку для своего матча. Москва.";
+    const image = s?.cover_url || `${BASE_URL}/og-image.png`;
+    const keywords = name
+      ? `${name}, аренда ${name}, стадион ${name} москва, аренда стадиона москва, любительский футбол, бронь площадки`
+      : "аренда стадиона москва, любительский футбол москва, поле для футбола, мини-футбол, futsal, бронь площадки, любительские игры, найти команду";
     return {
       meta: [
         { title },
         { name: "description", content: description },
-        { name: "keywords", content: "аренда стадиона москва, любительский футбол москва, поле для футбола, мини-футбол, futsal, бронь площадки, любительские игры, найти команду" },
+        { name: "keywords", content: keywords },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
         { property: "og:type", content: "place" },
         { property: "og:url", content: url },
         { property: "og:locale", content: "ru_RU" },
+        { property: "og:image", content: image },
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: title },
         { name: "twitter:description", content: description },
+        { name: "twitter:image", content: image },
         { name: "geo.region", content: "RU-MOW" },
         { name: "geo.placename", content: "Москва" },
       ],
